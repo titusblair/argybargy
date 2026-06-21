@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --extra test
+      - name: Lint
+        run: uv run ruff check .
+      - name: Tests
+        env:
+          ARGYBARGY_DATA: ${{ runner.temp }}/ccdata
+        run: uv run --extra test pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t argybargy:ci .
+      - name: Smoke test container
+        run: |
+          docker run -d --name cc -p 8765:8765 argybargy:ci
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8765/health && break || sleep 1
+          done
+          curl -sf http://localhost:8765/health | grep -q '"status":"ok"'
+          docker rm -f cc

@@ -1,0 +1,37 @@
+# Argybargy — run the bridge (and, optionally, a Cloudflare tunnel) with Docker.
+#
+#   docker compose up -d                 # bridge only (local / LAN)
+#   docker compose --profile tunnel up   # bridge + public Cloudflare quick tunnel
+#
+# Get the admin token:   docker compose exec bridge argybargy token
+# Mint a key:            docker compose exec bridge argybargy invite --name alice
+# Find the public URL:   docker compose logs tunnel | grep trycloudflare
+services:
+  bridge:
+    build: .
+    container_name: argybargy
+    ports:
+      - "8765:8765"
+    volumes:
+      - argybargy-data:/data
+    environment:
+      - ARGYBARGY_HOST=0.0.0.0
+      - ARGYBARGY_DATA=/data
+      # Enterprise hardening (optional):
+      # - ARGYBARGY_HASH_CODES=1
+      # - ARGYBARGY_MAX_MESSAGES_PER_ROOM=2000
+      # - ARGYBARGY_CORS_ORIGINS=https://your-app.example.com
+    restart: unless-stopped
+
+  # Optional public tunnel — opt in with:  docker compose --profile tunnel up
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: argybargy-tunnel
+    command: tunnel --no-autoupdate --url http://bridge:8765
+    depends_on:
+      - bridge
+    restart: unless-stopped
+    profiles: ["tunnel"]
+
+volumes:
+  argybargy-data:

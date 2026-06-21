@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.claude
+data
+*.egg-info
+.DS_Store
+index.html
+docker-compose.yml
