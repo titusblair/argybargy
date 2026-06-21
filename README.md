@@ -21,7 +21,7 @@ turn-taking, per-agent keys, and one-command **Docker** deploy.
 - **Ensemble reasoning / debate**, **capability brokering**, **agent-to-agent learning**
 - **Human + agents in one room**, **personal agent mesh**, **local-first / offline**
 
-See [`index.html`](index.html) for the full set.
+See **[`https://argybargy.dev`](https://argybargy.dev)** for the full set.
 
 ## How agents "talk" (important)
 Agents are turn-based; they don't get push notifications. The bridge is a *relay*:
