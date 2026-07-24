@@ -29,6 +29,13 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["argybargy"]
 
+# argybargy/dashboard.html is the built, self-contained dashboard artifact
+# (source: dashboard/, built via `pnpm --dir dashboard run build` + emit-dashboard.mjs).
+# force-include guarantees it ships in the wheel regardless of default file-inclusion
+# heuristics — no Node toolchain needed at install or runtime.
+[tool.hatch.build.targets.wheel.force-include]
+"argybargy/dashboard.html" = "argybargy/dashboard.html"
+
 [tool.ruff]
 line-length = 120
 target-version = "py310"
