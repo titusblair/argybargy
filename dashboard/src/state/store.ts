@@ -13,8 +13,9 @@
  * recomputation — never calls `reconcilePresence` with `[]`.
  */
 
-import { computed, signal } from "@preact/signals";
+import { computed, effect, signal } from "@preact/signals";
 import type { AdminState } from "./contract";
+import { roomList } from "./filters";
 import { type AgentView, reconcilePresence } from "./presence";
 
 const TOKEN_KEY = "cc_admin";
@@ -28,7 +29,7 @@ export const view = signal<{
   agent?: string;
 }>({
   kind: "room",
-  room: "build",
+  room: "",
 });
 
 // Threaded back into reconcilePresence on every recompute — see module
@@ -44,6 +45,25 @@ export const agents = computed<AgentView[]>(() => {
   const next = reconcilePresence(prevAgents, current);
   prevAgents = next;
   return next;
+});
+
+// Keep the active room view pointed at a room that actually exists. The view
+// starts with no room; on the first poll (and whenever the selected room later
+// disappears from the server) snap to the first available room — never sit on
+// a hardcoded default that may not exist on this relay.
+effect(() => {
+  const current = state.value;
+  if (!current) {
+    return;
+  }
+  const rooms = roomList(current);
+  if (rooms.length === 0) {
+    return;
+  }
+  const v = view.peek();
+  if (v.kind === "room" && !rooms.includes(v.room)) {
+    view.value = { kind: "room", room: rooms[0] };
+  }
 });
 
 /** Persists the admin token and updates the signal. */

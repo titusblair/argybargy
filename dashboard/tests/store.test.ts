@@ -137,6 +137,23 @@ describe("store", () => {
     expect(s.agents.value[0].justJoined).toBe(false);
   });
 
+  it("view snaps to the first existing room, never a non-existent default", async () => {
+    const s = await import("../src/state/store");
+    // Simulate a real relay whose rooms are NOT the seeded default.
+    s.state.value = {
+      codes: [],
+      hash_codes: false,
+      messages: [],
+      peers: {
+        default: [],
+        mesh: [{ name: "x", online: true, seconds_since_seen: 0 }],
+      },
+      public_url: "",
+    };
+    expect(s.view.value.kind).toBe("room");
+    expect(s.view.value.room).toBe("default");
+  });
+
   it("setToken persists to localStorage under cc_admin", async () => {
     const s = await import("../src/state/store");
     s.setToken("abc123");
