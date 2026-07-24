@@ -1,0 +1,330 @@
+/**
+ * Sidebar-only styles — co-located so the sidebar lane never touches the
+ * shared src/styles.css token file. Class names are prefixed `sb-` to stay
+ * clear of any other lane's markup.
+ *
+ * Ports the mockup's sidebar rules (argy-dashboard-mockup.html: .wshead,
+ * .room, .arow, .av, .recent-*, .sfoot, .iconbtn, .seg) onto this
+ * component's own class names, keyed off the shared design tokens in
+ * src/styles.css (--rail, --raised, --border, --text, --muted, --faint,
+ * --green, --agent, etc.) and the shared hue classes (.h0-.h4/.hop).
+ */
+
+.sb-root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  color: var(--text);
+  background: var(--rail);
+}
+
+/* ---------- workspace header ---------- */
+.sb-head {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  height: 52px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+}
+.sb-wsname {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.sb-conn {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  background: var(--faint);
+  border-radius: 50%;
+}
+.sb-conn.live {
+  background: var(--green);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--green) 55%, transparent);
+}
+.sb-conn.error {
+  background: var(--red);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--red) 55%, transparent);
+}
+.sb-wsurl {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--faint);
+}
+
+/* ---------- nav / sections ---------- */
+.sb-nav {
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.sb-label {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  padding: 16px 16px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.sb-label .sb-n {
+  font-family: var(--mono);
+  font-weight: 500;
+}
+
+/* ---------- rooms ---------- */
+.sb-room {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: calc(100% - 12px);
+  height: 30px;
+  padding: 0 10px;
+  margin: 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: left;
+  border-radius: 7px;
+}
+.sb-room .sb-ph {
+  display: block;
+  flex: none;
+  color: var(--faint);
+}
+.sb-room:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--raised) 70%, transparent);
+}
+.sb-room.active {
+  color: var(--text);
+  background: var(--raised);
+}
+.sb-room.active .sb-ph {
+  color: var(--muted);
+}
+.sb-room.unread {
+  font-weight: 600;
+  color: var(--text);
+}
+.sb-udot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin-left: auto;
+  background: var(--text);
+  border-radius: 50%;
+}
+
+/* ---------- agent rows ---------- */
+.sb-arow {
+  --dotring: var(--rail);
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  width: calc(100% - 12px);
+  max-height: 44px;
+  padding: 6px 10px;
+  margin: 0 6px;
+  overflow: hidden;
+  text-align: left;
+  border-radius: 7px;
+  transition: opacity 2s ease;
+}
+.sb-arow:hover {
+  background: color-mix(in srgb, var(--raised) 70%, transparent);
+}
+.sb-arow.active {
+  background: var(--raised);
+}
+.sb-aname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+}
+.sb-alast {
+  flex: none;
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--faint);
+}
+.sb-arow.fading {
+  opacity: 0.45;
+}
+.sb-arow.fading .sb-aname {
+  color: var(--muted);
+}
+.sb-arow.joining {
+  animation: sb-rowin 0.35s ease;
+}
+@keyframes sb-rowin {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* avatar: hued monogram squircle, presence dot bottom-right */
+.sb-av {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--agent);
+  letter-spacing: 0.02em;
+  user-select: none;
+  background: color-mix(in srgb, var(--agent) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--agent) 40%, transparent);
+  border-radius: 8px;
+}
+.sb-pdot {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 9px;
+  height: 9px;
+  background: var(--green);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2.5px var(--dotring, var(--rail));
+}
+.sb-pdot.off {
+  background: var(--dotring, var(--rail));
+  border: 1.5px solid var(--faint);
+  box-shadow: 0 0 0 2px var(--dotring, var(--rail));
+}
+.sb-arow.fading .sb-av {
+  filter: grayscale(0.55);
+}
+
+/* join-pulse: the presence dot rings out on the transition to online */
+.sb-arow.join-pulse .sb-pdot {
+  animation: sb-joinpulse 0.9s ease-out 2;
+}
+@keyframes sb-joinpulse {
+  0% {
+    box-shadow:
+      0 0 0 2.5px var(--dotring, var(--rail)),
+      0 0 0 2.5px color-mix(in srgb, var(--green) 55%, transparent);
+  }
+  100% {
+    box-shadow:
+      0 0 0 2.5px var(--dotring, var(--rail)),
+      0 0 0 12px transparent;
+  }
+}
+
+/* ---------- recently offline disclosure ---------- */
+.sb-recent-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: calc(100% - 12px);
+  padding: 5px 10px;
+  margin: 6px 6px 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--faint);
+  text-align: left;
+  border-radius: 7px;
+}
+.sb-recent-head:hover {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--raised) 60%, transparent);
+}
+.sb-recent-head .sb-ph {
+  transition: transform 0.15s ease;
+}
+.sb-recent-head.open .sb-ph {
+  transform: rotate(90deg);
+}
+.sb-recent-row {
+  --dotring: var(--rail);
+  opacity: 0.55;
+}
+.sb-recent-row .sb-av {
+  filter: grayscale(0.55);
+}
+.sb-recent-row .sb-aname {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* ---------- footer ---------- */
+.sb-foot {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  height: 52px;
+  padding: 0 10px calc(0px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+}
+.sb-iconbtn {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 28px;
+  color: var(--muted);
+  border-radius: 7px;
+}
+.sb-iconbtn:hover {
+  color: var(--text);
+  background: var(--raised);
+}
+.sb-seg {
+  display: flex;
+  flex: none;
+  /* reset <fieldset> defaults — used here for semantic grouping, not a form */
+  min-inline-size: auto;
+  padding: 0;
+  margin: 0 0 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.sb-seg button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 24px;
+  color: var(--faint);
+}
+.sb-seg button:hover {
+  color: var(--muted);
+}
+.sb-seg button.on {
+  color: var(--text);
+  background: var(--raised);
+}
+.sb-seg button + button {
+  border-left: 1px solid var(--border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-arow,
+  .sb-arow.joining,
+  .sb-arow.join-pulse .sb-pdot {
+    transition: none !important;
+    animation: none !important;
+  }
+}
