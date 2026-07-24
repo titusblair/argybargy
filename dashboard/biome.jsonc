@@ -4,5 +4,19 @@
     "ultracite/biome/core",
     "ultracite/biome/react",
     "ultracite/biome/vitest"
+  ],
+  "overrides": [
+    {
+      // Component files use PascalCase (React convention), matching their
+      // named export — e.g. src/components/Sidebar.tsx exports `Sidebar`.
+      "includes": ["src/components/**/*.tsx"],
+      "linter": {
+        "rules": {
+          "style": {
+            "useFilenamingConvention": "off"
+          }
+        }
+      }
+    }
   ]
 }
