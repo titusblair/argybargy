@@ -17,7 +17,7 @@
     "useDefineForClassFields": true,
     "allowImportingTsExtensions": true,
     "composite": true,
-    "types": ["vitest/globals"]
+    "types": ["vitest/globals", "node"]
   },
   "include": ["src", "tests", "vitest.setup.ts"]
 }

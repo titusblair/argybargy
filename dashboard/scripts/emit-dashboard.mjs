@@ -22,22 +22,32 @@ function fail(message) {
 }
 
 if (!existsSync(distPath)) {
-  fail(`build artifact not found at ${distPath} — run \`pnpm --dir dashboard run build\` first`);
+  fail(
+    `build artifact not found at ${distPath} — run \`pnpm --dir dashboard run build\` first`
+  );
 }
 
 const html = readFileSync(distPath, "utf-8");
 const byteSize = Buffer.byteLength(html, "utf-8");
 
 if (byteSize <= MIN_BYTES) {
-  fail(`build artifact is only ${byteSize} bytes (expected > ${MIN_BYTES}) — looks truncated or empty`);
+  fail(
+    `build artifact is only ${byteSize} bytes (expected > ${MIN_BYTES}) — looks truncated or empty`
+  );
 }
 
 // Same checks the build relies on to guarantee zero external references:
 // no <link> tags, no url()-based @import, no http(s) src attributes, no hotlinked images.
 const externalRefChecks = [
   { name: "<link ...> tag", regex: /<link\s/i },
-  { name: "@import url(...) from a URL", regex: /@import\s+url\(\s*['"]?https?:/i },
-  { name: 'src="http..." with a live URL', regex: /\ssrc\s*=\s*["']https?:\/\//i },
+  {
+    name: "@import url(...) from a URL",
+    regex: /@import\s+url\(\s*['"]?https?:/i,
+  },
+  {
+    name: 'src="http..." with a live URL',
+    regex: /\ssrc\s*=\s*["']https?:\/\//i,
+  },
   { name: "hotlinked <img> src", regex: /<img[^>]+src\s*=\s*["']https?:\/\//i },
 ];
 
@@ -45,7 +55,9 @@ const externalRefs = externalRefChecks.filter(({ regex }) => regex.test(html));
 
 if (externalRefs.length > 0) {
   const names = externalRefs.map((r) => r.name).join(", ");
-  fail(`found external reference(s) in build output: ${names} — build is not self-contained`);
+  fail(
+    `found external reference(s) in build output: ${names} — build is not self-contained`
+  );
 }
 
 if (!html.includes('id="app"')) {
@@ -55,4 +67,6 @@ if (!html.includes('id="app"')) {
 writeFileSync(outPath, html, "utf-8");
 
 console.log(`emit-dashboard: wrote ${outPath}`);
-console.log(`emit-dashboard: bytes=${byteSize} ext-refs=${externalRefs.length}`);
+console.log(
+  `emit-dashboard: bytes=${byteSize} ext-refs=${externalRefs.length}`
+);

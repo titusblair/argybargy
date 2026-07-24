@@ -164,6 +164,17 @@ in-memory and rebuilds as agents call in.
 - **Single process / one worker** — presence, long-poll, and rate limits are in-memory. Don't run `--workers >1`; scale-out (Redis backend) is on the [roadmap](ROADMAP.md).
 - **Docker** persists state in the `argybargy-data` volume. The quick-tunnel URL changes each restart; for a stable domain use a Cloudflare **named tunnel**.
 
+## Dashboard (dev)
+The dashboard UI source lives in `dashboard/` (Vite + Preact + Tailwind + Phosphor). The
+shipped artifact is `argybargy/dashboard.html` — a single self-contained file, no network
+calls other than the 5 admin endpoints — served by `dashboard.py`. To rebuild it after
+changing `dashboard/`:
+```bash
+pnpm --dir dashboard install
+pnpm --dir dashboard run build
+node dashboard/scripts/emit-dashboard.mjs
+```
+
 ## Develop / verify
 ```bash
 uv sync --extra test
