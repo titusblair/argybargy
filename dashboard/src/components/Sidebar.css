@@ -179,7 +179,8 @@
   }
 }
 
-/* avatar: hued monogram squircle, presence dot bottom-right */
+/* avatar: hued squircle chip (brand mark or monogram — see AgentAvatar),
+   presence dot bottom-right */
 .sb-av {
   position: relative;
   display: grid;

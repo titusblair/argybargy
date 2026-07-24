@@ -8,17 +8,9 @@
 import { ArrowLeft, At, Hash, UsersThree } from "@phosphor-icons/react";
 import type { Message } from "../state/contract";
 import { lastSeen } from "../state/format";
-import { hueFor } from "../state/presence";
+import { AgentAvatar } from "./AgentAvatar";
 import { expectsSince } from "./conversation-clock";
 import { ClaimedBadge, ExpectsBadge } from "./MessageBadges";
-
-function hueClass(name: string): string {
-  return `hue-${hueFor(name) % 5}`;
-}
-
-function monogram(name: string): string {
-  return name.slice(0, 2).toUpperCase();
-}
 
 /** Latest message in `room` carrying an open turn-state (expects or claimed). */
 function latestTurn(messages: Message[], room: string): Message | undefined {
@@ -82,14 +74,12 @@ export function ConversationHeader({
           >
             <ArrowLeft className="ph" size={16} />
           </button>
-          <span
-            className={`conv-avatar conv-avatar--sm conv-avatar--round ${hueClass(dmAgent)}`}
-          >
-            {monogram(dmAgent)}
-            <span
-              className={`conv-avatar__dot ${dmOnline ? "" : "conv-avatar__dot--off"}`}
-            />
-          </span>
+          <AgentAvatar
+            dot={dmOnline ? "on" : "off"}
+            name={dmAgent}
+            round
+            size="sm"
+          />
           <span className="conv-header__name" data-testid="channel-title">
             {dmAgent}
           </span>

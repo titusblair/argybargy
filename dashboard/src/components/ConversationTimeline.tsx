@@ -18,35 +18,12 @@ import { Hash } from "@phosphor-icons/react";
 import type { ComponentChild, RefObject } from "preact";
 import type { Message } from "../state/contract";
 import { hueFor } from "../state/presence";
+import { AgentAvatar } from "./AgentAvatar";
 import { expectsSince, messageKey } from "./conversation-clock";
 import { ClaimedBadge, ExpectsBadge } from "./MessageBadges";
 
 function hueClass(name: string, isOperator: boolean): string {
   return isOperator ? "hue-op" : `hue-${hueFor(name) % 5}`;
-}
-
-function monogram(name: string): string {
-  return name.slice(0, 2).toUpperCase();
-}
-
-function Avatar({
-  name,
-  isOperator,
-  size = "lg",
-}: {
-  name: string;
-  isOperator: boolean;
-  size?: "lg" | "sm";
-}) {
-  return (
-    <span
-      className={`conv-avatar conv-avatar--${size} ${hueClass(name, isOperator)} ${
-        isOperator ? "conv-avatar--round" : ""
-      }`}
-    >
-      {monogram(name)}
-    </span>
-  );
 }
 
 function DirectedTo({
@@ -162,7 +139,7 @@ export function ConversationTimeline({
           className={`conv-group ${group.isOperator ? "conv-group--op" : ""}`}
           key={messageKey(group.messages[0])}
         >
-          <Avatar isOperator={group.isOperator} name={group.sender} />
+          <AgentAvatar name={group.sender} size="lg" />
           <div className="conv-group__body">
             <div className="conv-group__head">
               <span

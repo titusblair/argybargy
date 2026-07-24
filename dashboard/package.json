@@ -12,6 +12,7 @@
     "@types/node": "^24.13.3",
     "@vitest/coverage-v8": "^4.1.10",
     "jsdom": "^29.1.1",
+    "simple-icons": "^16.27.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "ultracite": "7.9.4",

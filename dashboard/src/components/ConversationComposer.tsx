@@ -26,6 +26,7 @@ import { useCallback } from "preact/hooks";
 import type { AgentView } from "../state/presence";
 import { hueFor } from "../state/presence";
 import { say, state } from "../state/store";
+import { AgentAvatar } from "./AgentAvatar";
 
 export interface ComposerView {
   agent?: string;
@@ -35,10 +36,6 @@ export interface ComposerView {
 
 function hueClass(name: string): string {
   return `hue-${hueFor(name) % 5}`;
-}
-
-function monogram(name: string): string {
-  return name.slice(0, 2).toUpperCase();
 }
 
 /** className for the target pill: locked+hued for a DM, hued for a targeted
@@ -327,9 +324,7 @@ function ToMenuItem({
   const onClick = useCallback(() => onPick(name), [onPick, name]);
   return (
     <button className="conv-menu__item" onClick={onClick} type="button">
-      <span className={`conv-avatar conv-avatar--sm ${hueClass(name)}`}>
-        {monogram(name)}
-      </span>
+      <AgentAvatar name={name} size="sm" />
       <span className="conv-menu__who">{name}</span>
       <span className="conv-menu__k mono">to: {name}</span>
     </button>

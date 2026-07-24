@@ -1,0 +1,18 @@
+/**
+ * Glyph sizing inside the avatar chips. The chips themselves (.sb-av,
+ * .conv-avatar) keep their existing styles in Sidebar.css /
+ * ConversationPane.css; the mark inherits the per-agent hue through
+ * currentColor, so no color rules live here.
+ */
+
+.agent-logo {
+  width: 58%;
+  height: 58%;
+}
+
+/* Phosphor glyphs carry more built-in padding than simple-icons paths —
+   nudge the person mark up so its optical size matches the brand marks. */
+.agent-logo--person {
+  width: 70%;
+  height: 70%;
+}
