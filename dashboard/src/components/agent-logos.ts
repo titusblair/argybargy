@@ -48,7 +48,7 @@ const COLOR = {
   anthropic: "#D97757", // Anthropic coral
   cursor: "#6B7A90", // cool slate — Cursor has no strong brand hue
   gemini: "#4285F4", // Google/Gemini blue
-  openai: "#10A37F", // OpenAI teal-green
+  openai: "var(--text)", // OpenAI — monochrome, flips with theme (white on dark, near-black on light)
   opencode: "#E8A33D", // warm amber — distinct from the set above
   qwen: "#6950EF", // Qwen purple (kept)
 } as const;
