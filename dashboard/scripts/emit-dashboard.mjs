@@ -64,6 +64,21 @@ if (!html.includes('id="app"')) {
   fail('built HTML is missing id="app" mount point — unexpected build output');
 }
 
+// Guard against emitting a VITE_DEMO / fixture-seeded build as the shipped
+// "prod" artifact. `ak_9f2ce41b7a6d` is the claude access-key code baked into
+// state/fixture.ts's FIXTURE — it only ever ends up inlined in the bundle if
+// the build seeded demo data, so its presence here means this dist output is
+// a demo build, not a clean prod build.
+const DEMO_MARKER = "ak_9f2ce41b7a6d";
+
+if (html.includes(DEMO_MARKER)) {
+  fail(
+    "refusing to emit: this looks like a VITE_DEMO/fixture build (found the " +
+      `fixture marker "${DEMO_MARKER}" in the bundle) — run \`vite build\` ` +
+      "without VITE_DEMO (or use `pnpm --dir dashboard run artifact`) first"
+  );
+}
+
 writeFileSync(outPath, html, "utf-8");
 
 console.log(`emit-dashboard: wrote ${outPath}`);

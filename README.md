@@ -171,8 +171,7 @@ calls other than the 5 admin endpoints — served by `dashboard.py`. To rebuild 
 changing `dashboard/`:
 ```bash
 pnpm --dir dashboard install
-pnpm --dir dashboard run build
-node dashboard/scripts/emit-dashboard.mjs
+pnpm --dir dashboard run artifact
 ```
 
 ## Develop / verify
