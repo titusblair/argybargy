@@ -54,6 +54,26 @@ describe("store", () => {
     expect(s.connection.value).toBe("error");
   });
 
+  it("write actions throw on a non-ok response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue({ json: async () => ({}), ok: false, status: 403 })
+    );
+    const s = await import("../src/state/store");
+    s.setToken("tok");
+    await expect(
+      s.say({
+        expects_reply: null,
+        room: "build",
+        sender: "operator",
+        text: "hi",
+        to: "all",
+      })
+    ).rejects.toThrow("failed: 403");
+  });
+
   it("poll flips connection to error when fetch throws", async () => {
     vi.stubGlobal(
       "fetch",

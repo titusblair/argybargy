@@ -52,7 +52,11 @@ export function setToken(t: string): void {
   localStorage.setItem(TOKEN_KEY, t);
 }
 
-/** Shared POST helper for admin actions: JSON body + X-Admin-Token header. */
+/**
+ * Shared POST helper for admin actions: JSON body + X-Admin-Token header.
+ * Throws on a non-ok response so callers (and the UI) can surface the failure
+ * instead of silently treating an error body as success.
+ */
 async function api(path: string, body: unknown): Promise<unknown> {
   const res = await fetch(path, {
     body: JSON.stringify(body),
@@ -62,6 +66,9 @@ async function api(path: string, body: unknown): Promise<unknown> {
     },
     method: "POST",
   });
+  if (!res.ok) {
+    throw new Error(`${path} failed: ${res.status}`);
+  }
   return res.json();
 }
 
