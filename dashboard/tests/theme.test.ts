@@ -1,22 +1,6 @@
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
-// Vitest 4.1's jsdom environment forwards window globals via a static key
-// list that omits `localStorage`/`sessionStorage` (they're prototype
-// getters, not own properties, so they're missed by both the static list
-// and the own-property scan). Pull it directly off the jsdom instance
-// vitest exposes as `globalThis.jsdom` so the real Storage implementation
-// backs the global `localStorage` used below and inside src/theme.ts.
-beforeAll(() => {
-  if (typeof globalThis.localStorage === "undefined") {
-    const dom = (globalThis as { jsdom?: { window: Window } }).jsdom;
-    if (dom?.window.localStorage) {
-      Object.defineProperty(globalThis, "localStorage", {
-        configurable: true,
-        value: dom.window.localStorage,
-      });
-    }
-  }
-});
+// `localStorage` is polyfilled globally by vitest.setup.ts.
 
 beforeEach(() => {
   localStorage.clear();

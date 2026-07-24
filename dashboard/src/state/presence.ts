@@ -37,6 +37,15 @@ export function hueFor(name: string): number {
  * online; once it goes offline, `life` stays `"fading"` until
  * `seconds_since_seen` (the server's own clock, in seconds) exceeds
  * `fadeMs`, then it becomes `"offline"`.
+ *
+ * Invariant: the relay (`hub.py`) never removes an entry from its
+ * `_last_seen` map once a peer has been seen — offline peers stay in
+ * `state.peers` indefinitely with `online: false` and a growing
+ * `seconds_since_seen`, only clearing on process restart. That's why aging
+ * out is driven by `seconds_since_seen` here rather than by a key going
+ * missing from `state.peers`: a peer key vanishing mid-session isn't a case
+ * the server can produce, so we don't carry forward absent keys from `prev`
+ * as still-present.
  */
 export function reconcilePresence(
   prev: AgentView[],

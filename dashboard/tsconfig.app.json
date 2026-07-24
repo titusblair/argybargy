@@ -19,5 +19,5 @@
     "composite": true,
     "types": ["vitest/globals"]
   },
-  "include": ["src", "tests"]
+  "include": ["src", "tests", "vitest.setup.ts"]
 }
