@@ -7,7 +7,4 @@ data/
 .claude/
 .DS_Store
 
-# dashboard/ (Vite + Preact sub-app)
-dashboard/node_modules
-dashboard/dist
-dashboard/test-results
+# dashboard/ (Vite + Preact sub-app) — see dashboard/.gitignore
