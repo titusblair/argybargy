@@ -4,10 +4,12 @@
  * The chips themselves (.sb-av, .conv-avatar) keep their base geometry in
  * Sidebar.css / ConversationPane.css. This file adds:
  *   - glyph sizing inside the chip,
- *   - the `.is-brand` treatment for KNOWN vendors: resolve `--agent` from the
- *     inline `--brand-d` / `--brand-l` vars per active theme, and neutralize
- *     the chip fill/border so the full-color mark pops. Unknown agents never
- *     get `.is-brand`, so their hued-monogram chip is untouched.
+ *   - the `.is-brand` treatment for KNOWN vendors: neutralize the chip
+ *     fill/border so the full-color mark pops. `--agent` is pinned inline to
+ *     the vendor's signature color (see brandVars() in AgentAvatar.tsx), and
+ *     since those colors are mid-tones that read on both themes, no per-theme
+ *     resolution is needed. Unknown agents never get `.is-brand`, so their
+ *     hued-monogram chip is untouched.
  *
  * `--agent` is the single accent variable both the mark fill (fill:var(--agent)
  * in AgentAvatar.tsx) and the agent name color (color:var(--agent) in the
@@ -24,23 +26,6 @@
 .agent-logo--person {
   width: 70%;
   height: 70%;
-}
-
-/* ---- brand accent variable (known vendors) ----
-   Default to the dark-surface variant; the light overrides below mirror the
-   token layer's theme resolution in styles.css exactly (explicit
-   data-theme="light", plus data-theme="auto"/unset under an OS light
-   preference). data-theme="dark" and auto-on-dark keep the default. */
-.is-brand {
-  --agent: var(--brand-d);
-}
-:root[data-theme="light"] .is-brand {
-  --agent: var(--brand-l);
-}
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]):not([data-theme="light"]) .is-brand {
-    --agent: var(--brand-l);
-  }
 }
 
 /* ---- neutral chip for brand marks ----

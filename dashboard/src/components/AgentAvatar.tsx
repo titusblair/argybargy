@@ -3,18 +3,20 @@
  * conversation-pane author chip (timeline groups, DM header, to-menu) so
  * the two surfaces can't drift.
  *
- * Renders the agent's vendor mark (agent-logos.ts) in the vendor's OFFICIAL
+ * Renders the agent's vendor mark (agent-logos.ts) in the vendor's SIGNATURE
  * brand color when the name maps to a known vendor, the human seat as a
  * neutral Phosphor person glyph, and everything else as the original hued
  * monogram — unknown mesh agents (and hermes) look exactly as before.
  *
  * Treatment: for a KNOWN vendor the chip drops the hue tint and goes
  * neutral (raised surface + faint border) so the full-color mark pops, and
- * the mark + the agent's NAME both read the brand color via one CSS var —
- * see brandVars() below and the `.is-brand` blocks in AgentAvatar.css. For
- * UNKNOWN agents the chip keeps the exact hued-monogram treatment (15% hue
- * fill, 40% hue border) it had before. Presence dot, join-pulse, and fading
- * all key off the preserved chip/dot classes (.sb-av/.sb-pdot,
+ * the mark + the agent's NAME both read the signature color via one CSS var
+ * (--agent) — see brandVars() below and the `.is-brand` block in
+ * AgentAvatar.css. The signature colors are mid-tones that read on both
+ * themes, so a single value serves dark and light. For UNKNOWN agents the
+ * chip keeps the exact hued-monogram treatment (15% hue fill, 40% hue
+ * border) it had before. Presence dot, join-pulse, and fading all key off
+ * the preserved chip/dot classes (.sb-av/.sb-pdot,
  * .conv-avatar/.conv-avatar__dot).
  */
 
@@ -31,12 +33,11 @@ function monogram(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
-/** Inline custom props carrying a brand color's dark + light variants. The
- * `.is-brand` CSS blocks resolve `--agent` from these per active theme, so
+/** Inline custom prop pinning `--agent` to the vendor's signature color, so
  * one variable drives both the mark fill and the name color. Spread onto
  * every element that should read the brand accent. */
 export function brandVars(color: BrandColor): Record<string, string> {
-  return { "--brand-d": color.dark, "--brand-l": color.light };
+  return { "--agent": color };
 }
 
 function Glyph({ name }: { name: string }) {
