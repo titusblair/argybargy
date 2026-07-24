@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { elapsedSince, lastSeen, parseExpires } from "../src/state/format";
+import { elapsedSince, lastSeen } from "../src/state/format";
 
 describe("format", () => {
   it("lastSeen buckets", () => {
@@ -13,14 +13,6 @@ describe("format", () => {
 
   it("lastSeen hours bucket", () => {
     expect(lastSeen(3600)).toBe("1h");
-  });
-
-  it("parseExpires handles null as never", () => {
-    expect(parseExpires(null)).toBe("never");
-  });
-
-  it("parseExpires passes through a label", () => {
-    expect(parseExpires("6d 22h")).toBe("6d 22h");
   });
 
   it("elapsedSince mm:ss", () => {

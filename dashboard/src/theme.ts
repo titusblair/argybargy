@@ -16,7 +16,6 @@
 export type Theme = "auto" | "light" | "dark";
 
 const STORAGE_KEY = "cc_theme";
-const CYCLE: readonly Theme[] = ["auto", "light", "dark"];
 
 function isTheme(value: string | null): value is Theme {
   return value === "auto" || value === "light" || value === "dark";
@@ -32,11 +31,4 @@ export function currentTheme(): Theme {
 export function applyTheme(theme: Theme): void {
   localStorage.setItem(STORAGE_KEY, theme);
   document.documentElement.setAttribute("data-theme", theme);
-}
-
-/** Cycles auto -> light -> dark -> auto, applying and persisting each step. */
-export function cycleTheme(): Theme {
-  const next = CYCLE[(CYCLE.indexOf(currentTheme()) + 1) % CYCLE.length];
-  applyTheme(next);
-  return next;
 }

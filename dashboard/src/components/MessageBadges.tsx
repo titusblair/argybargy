@@ -10,7 +10,7 @@
  *   - neither                   -> no badge (caller shouldn't render one).
  */
 
-import { Check } from "@phosphor-icons/react";
+import { CheckIcon } from "@phosphor-icons/react";
 import { elapsedSince } from "../state/format";
 
 export function ClaimedBadge({ by }: { by: string }) {
@@ -20,7 +20,7 @@ export function ClaimedBadge({ by }: { by: string }) {
       data-badge="claimed"
       title={`claimed_by: "${by}"`}
     >
-      <Check className="ph" size={10} weight="bold" />
+      <CheckIcon className="ph" size={10} weight="bold" />
       claimed · {by}
     </span>
   );

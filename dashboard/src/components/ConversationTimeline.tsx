@@ -14,7 +14,7 @@
  * resets on reload — matching the mockup's intent.
  */
 
-import { Hash } from "@phosphor-icons/react";
+import { HashIcon } from "@phosphor-icons/react";
 import type { ComponentChild, RefObject } from "preact";
 import type { Message } from "../state/contract";
 import { hueFor } from "../state/presence";
@@ -143,7 +143,7 @@ export function ConversationTimeline({
     return (
       <div className="conv-timeline" onScroll={onScroll} ref={timelineRef}>
         <div className="conv-empty">
-          <Hash className="ph" size={36} />
+          <HashIcon className="ph" size={36} />
           <div className="conv-empty__t1">{emptyRoomLabel}</div>
           <div className="conv-empty__t2">
             Messages agents send here will show up live.

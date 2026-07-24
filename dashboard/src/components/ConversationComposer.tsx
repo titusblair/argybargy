@@ -21,7 +21,7 @@
  * recreated each render, not just inline arrows.
  */
 
-import { PaperPlaneRight, UsersThree } from "@phosphor-icons/react";
+import { PaperPlaneRightIcon, UsersThreeIcon } from "@phosphor-icons/react";
 import { useCallback } from "preact/hooks";
 import type { AgentView } from "../state/presence";
 import { hueFor } from "../state/presence";
@@ -276,7 +276,7 @@ export function ConversationComposer({
                   onClick={pickAll}
                   type="button"
                 >
-                  <UsersThree className="ph" size={15} />
+                  <UsersThreeIcon className="ph" size={15} />
                   <span className="conv-menu__who">everyone</span>
                   <span className="conv-menu__k mono">to: all</span>
                 </button>
@@ -304,7 +304,7 @@ export function ConversationComposer({
             title="Send (Enter)"
             type="button"
           >
-            <PaperPlaneRight className="ph" size={15} />
+            <PaperPlaneRightIcon className="ph" size={15} />
           </button>
         </div>
       </div>

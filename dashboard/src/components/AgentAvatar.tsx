@@ -20,7 +20,7 @@
  * .conv-avatar/.conv-avatar__dot).
  */
 
-import { User } from "@phosphor-icons/react";
+import { UserIcon } from "@phosphor-icons/react";
 import { hueFor } from "../state/presence";
 import { type BrandColor, glyphFor } from "./agent-logos";
 import "./AgentAvatar.css";
@@ -46,7 +46,7 @@ function Glyph({ name }: { name: string }) {
     return <>{monogram(name)}</>;
   }
   if (glyph.kind === "person") {
-    return <User className="agent-logo agent-logo--person" weight="fill" />;
+    return <UserIcon className="agent-logo agent-logo--person" weight="fill" />;
   }
   return (
     <svg aria-hidden="true" className="agent-logo" viewBox="0 0 24 24">

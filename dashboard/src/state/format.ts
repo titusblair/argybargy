@@ -17,14 +17,6 @@ export function lastSeen(seconds: number): string {
   return `${Math.floor(seconds / 3600)}h`;
 }
 
-/** "never" for a null expiry, otherwise the label passes through unchanged. */
-export function parseExpires(v: string | null): string {
-  if (v === null) {
-    return "never";
-  }
-  return v;
-}
-
 /** mm:ss elapsed between an epoch-ms start and `now`, e.g. "0:07", "1:05". */
 export function elapsedSince(epochMs: number, now: number): string {
   const totalSeconds = Math.max(0, Math.floor((now - epochMs) / 1000));

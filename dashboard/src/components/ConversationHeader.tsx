@@ -5,7 +5,12 @@
  * mockup's `renderHeader()` + `turnChip()`.
  */
 
-import { ArrowLeft, At, Hash, UsersThree } from "@phosphor-icons/react";
+import {
+  ArrowLeftIcon,
+  AtIcon,
+  HashIcon,
+  UsersThreeIcon,
+} from "@phosphor-icons/react";
 import type { Message } from "../state/contract";
 import { lastSeen } from "../state/format";
 import { AgentAvatar } from "./AgentAvatar";
@@ -72,7 +77,7 @@ export function ConversationHeader({
             title={`Back to #${room}`}
             type="button"
           >
-            <ArrowLeft className="ph" size={16} />
+            <ArrowLeftIcon className="ph" size={16} />
           </button>
           <AgentAvatar
             dot={dmOnline ? "on" : "off"}
@@ -92,19 +97,19 @@ export function ConversationHeader({
             className="conv-header__filterchip"
             title="Direct view = client-side filter over room messages"
           >
-            <At className="ph" size={11} />
+            <AtIcon className="ph" size={11} />
             filtered · #{room}
           </span>
         </>
       ) : (
         <>
-          <Hash className="ph conv-header__hash" size={16} />
+          <HashIcon className="ph conv-header__hash" size={16} />
           <span className="conv-header__name" data-testid="channel-title">
             {room}
           </span>
           <span className="conv-header__sep" />
           <span className="conv-header__meta">
-            <UsersThree className="ph" size={13} />
+            <UsersThreeIcon className="ph" size={13} />
             <span>{presentCount}</span>
             <span className="conv-header__plabel">&nbsp;present</span>
           </span>

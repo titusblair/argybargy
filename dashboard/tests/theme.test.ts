@@ -8,15 +8,6 @@ beforeEach(() => {
 });
 
 describe("theme", () => {
-  it("cycles auto->light->dark->auto and persists", async () => {
-    const { cycleTheme } = await import("../src/theme");
-    expect(cycleTheme()).toBe("light");
-    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
-    expect(cycleTheme()).toBe("dark");
-    expect(localStorage.getItem("cc_theme")).toBe("dark");
-    expect(cycleTheme()).toBe("auto");
-  });
-
   it("applyTheme sets data-theme and persists to localStorage", async () => {
     const { applyTheme } = await import("../src/theme");
     applyTheme("dark");

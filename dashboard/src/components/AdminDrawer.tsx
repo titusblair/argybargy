@@ -14,14 +14,14 @@
  */
 
 import {
-  ArrowClockwise,
-  Broadcast,
-  Check,
-  Copy,
-  GearSix,
-  Key,
-  UsersThree,
-  X,
+  ArrowClockwiseIcon,
+  BroadcastIcon,
+  CheckIcon,
+  CopyIcon,
+  GearSixIcon,
+  KeyIcon,
+  UsersThreeIcon,
+  XIcon,
 } from "@phosphor-icons/react";
 import { useCallback, useState } from "preact/hooks";
 import type { Code } from "../state/contract";
@@ -118,7 +118,7 @@ function TokenSection() {
   return (
     <section className="ad-sec">
       <div className="ad-label">
-        <Key size={13} />
+        <KeyIcon size={13} />
         Admin token
       </div>
       <div className="ad-frow">
@@ -132,7 +132,7 @@ function TokenSection() {
           value={draft}
         />
         <button className="ad-btn" onClick={save} type="button">
-          {saved ? <Check size={13} /> : null}
+          {saved ? <CheckIcon size={13} /> : null}
           Save
         </button>
       </div>
@@ -206,7 +206,7 @@ function MintKeyForm() {
   return (
     <section className="ad-sec">
       <h2 className="ad-label">
-        <Key size={13} />
+        <KeyIcon size={13} />
         Mint a key
       </h2>
       <div className="ad-frow">
@@ -271,7 +271,7 @@ function MintKeyForm() {
           <div className="ad-code">{result.code}</div>
           <div style={{ marginTop: 7 }}>
             <button className="ad-btn" onClick={copyCode} type="button">
-              {copied ? <Check size={12} /> : <Copy size={12} />}
+              {copied ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
               Copy code
             </button>
           </div>
@@ -332,7 +332,7 @@ function KeyRow({ code }: { code: Code }) {
               onClick={copyCode}
               type="button"
             >
-              {copied ? <Check size={13} /> : <Copy size={13} />}
+              {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
             </button>
           )}
           <button
@@ -365,7 +365,7 @@ function KeysSection() {
       data-testid="admin-keys"
     >
       <h2 className="ad-label">
-        <UsersThree size={13} />
+        <UsersThreeIcon size={13} />
         Access keys <span className="mono">· {codes.length}</span>
       </h2>
       {codes.length === 0 ? (
@@ -422,7 +422,7 @@ function RegenerateSection() {
         onClick={doRegenerate}
         type="button"
       >
-        <ArrowClockwise size={13} />
+        <ArrowClockwiseIcon size={13} />
         {armed ? "Really regenerate?" : "Regenerate admin token"}
       </button>
       <p className="ad-hint">
@@ -435,7 +435,7 @@ function RegenerateSection() {
           <div className="ad-code">{result}</div>
           <div style={{ marginTop: 7 }}>
             <button className="ad-btn" onClick={copyToken} type="button">
-              {copied ? <Check size={12} /> : <Copy size={12} />}
+              {copied ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
               Copy token
             </button>
           </div>
@@ -462,7 +462,7 @@ function PublicUrlSection() {
   return (
     <section className="ad-sec">
       <div className="ad-label">
-        <Broadcast size={13} />
+        <BroadcastIcon size={13} />
         Public URL
       </div>
       <div className="ad-urlrow">
@@ -473,7 +473,7 @@ function PublicUrlSection() {
           onClick={copyUrl}
           type="button"
         >
-          {copied ? <Check size={13} /> : <Copy size={13} />}
+          {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
         </button>
       </div>
       <p className="ad-hint">
@@ -492,7 +492,7 @@ export function AdminDrawer() {
   return (
     <aside aria-label="Admin" className="ad-root" data-testid="admin-drawer">
       <header className="ad-head">
-        <GearSix size={16} />
+        <GearSixIcon size={16} />
         <span className="ad-title">Admin</span>
         <span className="ad-sub mono">keys · token · relay</span>
         <button
@@ -501,7 +501,7 @@ export function AdminDrawer() {
           onClick={closeDrawer}
           type="button"
         >
-          <X size={16} />
+          <XIcon size={16} />
         </button>
       </header>
       <div className="ad-body">

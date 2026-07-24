@@ -11,12 +11,12 @@
  */
 
 import {
-  CaretRight,
-  CircleHalf,
-  Gear,
-  Hash,
-  Moon,
-  Sun,
+  CaretRightIcon,
+  CircleHalfIcon,
+  GearIcon,
+  HashIcon,
+  MoonIcon,
+  SunIcon,
 } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import "./Sidebar.css";
@@ -187,7 +187,7 @@ export function Sidebar() {
                 onClick={roomClick(r)}
                 type="button"
               >
-                <Hash className="sb-ph" size={14} weight="regular" />
+                <HashIcon className="sb-ph" size={14} weight="regular" />
                 <span>{r}</span>
               </button>
             );
@@ -217,7 +217,7 @@ export function Sidebar() {
               onClick={toggleRecentOpen}
               type="button"
             >
-              <CaretRight className="sb-ph" size={12} weight="regular" />
+              <CaretRightIcon className="sb-ph" size={12} weight="regular" />
               Recently offline · {recentlyOffline.length}
             </button>
             {recentOpen ? (
@@ -246,7 +246,7 @@ export function Sidebar() {
           title="Admin"
           type="button"
         >
-          <Gear size={17} weight="regular" />
+          <GearIcon size={17} weight="regular" />
         </button>
         <ThemeToggle />
       </div>
@@ -285,10 +285,10 @@ function ThemeToggle() {
 
 function themeIcon(t: Theme) {
   if (t === "auto") {
-    return <CircleHalf size={13} weight="regular" />;
+    return <CircleHalfIcon size={13} weight="regular" />;
   }
   if (t === "light") {
-    return <Sun size={13} weight="regular" />;
+    return <SunIcon size={13} weight="regular" />;
   }
-  return <Moon size={13} weight="regular" />;
+  return <MoonIcon size={13} weight="regular" />;
 }
