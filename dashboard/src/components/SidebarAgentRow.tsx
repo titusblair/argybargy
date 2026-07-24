@@ -5,7 +5,8 @@
 
 import { lastSeen } from "../state/format";
 import type { AgentView } from "../state/presence";
-import { AgentAvatar } from "./AgentAvatar";
+import { AgentAvatar, brandVars } from "./AgentAvatar";
+import { brandAccent } from "./agent-logos";
 
 export function SidebarAgentRow({
   agent,
@@ -32,6 +33,10 @@ export function SidebarAgentRow({
     .filter(Boolean)
     .join(" ");
 
+  // Known vendor → the name reads the brand color (logo + name = one
+  // identity). Unknown/hermes → default text, exactly as before.
+  const brand = brandAccent(agent.name);
+
   return (
     <button
       className={classes}
@@ -45,7 +50,12 @@ export function SidebarAgentRow({
         name={agent.name}
         size="row"
       />
-      <span className="sb-aname">{agent.name}</span>
+      <span
+        className={brand ? "sb-aname is-brand sb-aname--brand" : "sb-aname"}
+        style={brand ? (brandVars(brand) as never) : undefined}
+      >
+        {agent.name}
+      </span>
       <span className="sb-alast mono" data-testid="last-seen">
         {agent.life === "online" ? "online" : `${lastSeen(displaySeconds)} ago`}
       </span>

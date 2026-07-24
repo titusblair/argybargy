@@ -18,12 +18,43 @@ import { Hash } from "@phosphor-icons/react";
 import type { ComponentChild, RefObject } from "preact";
 import type { Message } from "../state/contract";
 import { hueFor } from "../state/presence";
-import { AgentAvatar } from "./AgentAvatar";
+import { AgentAvatar, brandVars } from "./AgentAvatar";
+import { brandAccent } from "./agent-logos";
 import { expectsSince, messageKey } from "./conversation-clock";
 import { ClaimedBadge, ExpectsBadge } from "./MessageBadges";
 
 function hueClass(name: string, isOperator: boolean): string {
   return isOperator ? "hue-op" : `hue-${hueFor(name) % 5}`;
+}
+
+/** The author name for a message group — brand color for a known vendor
+ * (logo + name = one identity), the hue tint otherwise, and plain --text
+ * for the operator. Mirrors the accent logic in AgentAvatar. */
+function AuthorName({
+  name,
+  isOperator,
+}: {
+  name: string;
+  isOperator: boolean;
+}) {
+  const brand = !isOperator && brandAccent(name);
+  if (brand) {
+    return (
+      <span
+        className="conv-group__name is-brand"
+        style={brandVars(brand) as never}
+      >
+        {name}
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`conv-group__name ${isOperator ? "" : hueClass(name, false)}`}
+    >
+      {name}
+    </span>
+  );
 }
 
 function DirectedTo({
@@ -142,13 +173,7 @@ export function ConversationTimeline({
           <AgentAvatar name={group.sender} size="lg" />
           <div className="conv-group__body">
             <div className="conv-group__head">
-              <span
-                className={`conv-group__name ${
-                  group.isOperator ? "" : hueClass(group.sender, false)
-                }`}
-              >
-                {group.sender}
-              </span>
+              <AuthorName isOperator={group.isOperator} name={group.sender} />
               {group.isOperator ? (
                 <span className="conv-oppill">operator</span>
               ) : null}

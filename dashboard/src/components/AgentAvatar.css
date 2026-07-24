@@ -1,8 +1,17 @@
 /**
- * Glyph sizing inside the avatar chips. The chips themselves (.sb-av,
- * .conv-avatar) keep their existing styles in Sidebar.css /
- * ConversationPane.css; the mark inherits the per-agent hue through
- * currentColor, so no color rules live here.
+ * Brand-aware avatar treatment.
+ *
+ * The chips themselves (.sb-av, .conv-avatar) keep their base geometry in
+ * Sidebar.css / ConversationPane.css. This file adds:
+ *   - glyph sizing inside the chip,
+ *   - the `.is-brand` treatment for KNOWN vendors: resolve `--agent` from the
+ *     inline `--brand-d` / `--brand-l` vars per active theme, and neutralize
+ *     the chip fill/border so the full-color mark pops. Unknown agents never
+ *     get `.is-brand`, so their hued-monogram chip is untouched.
+ *
+ * `--agent` is the single accent variable both the mark fill (fill:var(--agent)
+ * in AgentAvatar.tsx) and the agent name color (color:var(--agent) in the
+ * component CSS) read — so logo + name render as one brand identity.
  */
 
 .agent-logo {
@@ -15,4 +24,39 @@
 .agent-logo--person {
   width: 70%;
   height: 70%;
+}
+
+/* ---- brand accent variable (known vendors) ----
+   Default to the dark-surface variant; the light overrides below mirror the
+   token layer's theme resolution in styles.css exactly (explicit
+   data-theme="light", plus data-theme="auto"/unset under an OS light
+   preference). data-theme="dark" and auto-on-dark keep the default. */
+.is-brand {
+  --agent: var(--brand-d);
+}
+:root[data-theme="light"] .is-brand {
+  --agent: var(--brand-l);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]):not([data-theme="light"]) .is-brand {
+    --agent: var(--brand-l);
+  }
+}
+
+/* ---- neutral chip for brand marks ----
+   Full-color marks read best on a quiet chip, so drop the hue tint: a raised
+   surface fill and a faint border, consistent across the rail (.sb-av) and
+   the conversation pane (.conv-avatar). The mark supplies the color. */
+.sb-av.is-brand,
+.conv-avatar.is-brand {
+  color: var(--agent);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  border-color: var(--border-strong);
+}
+
+/* Sidebar agent name in the brand color for known vendors (the rail name is
+   plain --text otherwise, unchanged). `.conv-group__name` already reads
+   `color: var(--agent)`, so the timeline name needs no extra rule. */
+.sb-aname--brand {
+  color: var(--agent);
 }
