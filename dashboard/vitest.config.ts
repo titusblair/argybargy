@@ -5,8 +5,8 @@ export default defineConfig({
   plugins: [preact()],
   test: {
     environment: "jsdom",
-    exclude: ["tests/**", "node_modules/**"],
+    exclude: ["tests/**/*.spec.ts", "node_modules/**"],
     globals: true,
-    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    include: ["src/**/*.{test,spec}.{ts,tsx}", "tests/**/*.test.ts"],
   },
 });
