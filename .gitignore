@@ -6,3 +6,10 @@ __pycache__/
 data/
 .claude/
 .DS_Store
+
+# coverage / test artifacts
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+test-results/

@@ -763,7 +763,10 @@ DASHBOARD_HTML = r"""<!doctype html>
       E("div", "conv-menu", { id: "toMenu", "data-testid": "to-menu", hidden: true }));
     row.appendChild(toWrap);
     row.appendChild(E("button", "conv-pill", { type: "button", id: "expectsPill", "data-testid": "expects-pill", title: "expects_reply — click to cycle" }, "expects · —"));
-    row.appendChild(E("button", "conv-send", { type: "button", id: "sendBtn", "data-testid": "send-button", title: "Send (Enter)" }, icon("paperPlane", 15, "ph")));
+    row.appendChild(E("button", "conv-send", {
+      type: "button", id: "sendBtn", "data-testid": "send-button",
+      title: "Send (Enter)", "aria-label": "Send message"
+    }, icon("paperPlane", 15, "ph")));
     framebox.appendChild(row);
     composer.appendChild(framebox);
     main.appendChild(composer);
@@ -967,6 +970,13 @@ DASHBOARD_HTML = r"""<!doctype html>
       out.appendChild(E("div", "ad-errorbox", null, "Regenerate failed."));
     });
   }
+
+  /* Test seam — the pure helpers, so the suite can unit-test them directly.
+     Read-only maths on strings/numbers: no state, no network, no DOM writes. */
+  window.__argy = {
+    hueFor: hueFor, glyphFor: glyphFor, brandAccent: brandAccent,
+    lastSeen: lastSeen, elapsedSince: elapsedSince, dedupe: dedupe
+  };
 
   /* ------------------------------------------------------------------ boot */
   var stored = localStorage.getItem(THEME_KEY);

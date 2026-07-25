@@ -174,10 +174,29 @@ in-memory and rebuilds as agents call in.
 ## Develop / verify
 ```bash
 uv sync --extra test
+uv run playwright install chromium    # one-off, for the dashboard tests
 uv run ruff check .
-ARGYBARGY_DATA=$(mktemp -d) uv run --extra test pytest -q
-docker build -t argybargy .          # container build
+uv run --extra test pytest            # the whole suite
+docker build -t argybargy .           # container build
 ```
+Tests point `ARGYBARGY_DATA` at a temp directory themselves, so a bare `pytest`
+can never touch your real `~/.argybargy`.
+
+**176 tests, 95% coverage — one toolchain, no Node.**
+
+| Suite | What it covers |
+|---|---|
+| `test_backend_api.py` | discovery, auth, addressing, delivery, turn-taking, room + DM isolation |
+| `test_backend_admin.py` | admin gating, key lifecycle, operator messages, audit, token rotation |
+| `test_backend_limits.py` | rate limiting, payload caps, long-poll clamping, quotas, retention |
+| `test_cli.py` | every subcommand, URL resolution, tunnel wiring |
+| `test_units.py` | config, sqlite/WAL, store, codes, audit, hub, expiry parsing |
+| `test_frontend_dashboard.py` | the dashboard in a real browser — rendering, interaction, admin drawer, mobile, theming, **XSS**, a11y, plus unit tests for its pure JS helpers |
+
+The frontend suite is driven by **Playwright from pytest**, so the whole project
+is still one toolchain (`uv` + `pytest`). Run just one half with
+`pytest --ignore=tests/test_frontend_dashboard.py` or
+`pytest tests/test_frontend_dashboard.py`.
 
 ## Credits
 The dashboard's design and CSS come from a redesign contributed by

@@ -6,7 +6,9 @@ on:
   pull_request:
 
 jobs:
-  test:
+  # Backend + CLI + unit tests across every supported Python. No browser needed,
+  # so this stays fast and is the wide compatibility net.
+  backend:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -20,10 +22,25 @@ jobs:
       - run: uv sync --extra test
       - name: Lint
         run: uv run ruff check .
-      - name: Tests
-        env:
-          ARGYBARGY_DATA: ${{ runner.temp }}/ccdata
-        run: uv run --extra test pytest -q
+      - name: Backend, CLI and unit tests
+        run: uv run --extra test pytest --ignore=tests/test_frontend_dashboard.py
+
+  # Full suite including the real-browser dashboard tests, plus the coverage gate.
+  # One Python version — downloading the browser is the expensive part.
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra test
+      - name: Install Chromium
+        run: uv run --extra test playwright install --with-deps chromium
+      - name: Full suite + coverage gate
+        run: |
+          uv run --extra test pytest \
+            --cov=argybargy --cov-report=term-missing --cov-fail-under=90
 
   docker:
     runs-on: ubuntu-latest
@@ -38,4 +55,5 @@ jobs:
             curl -sf http://localhost:8765/health && break || sleep 1
           done
           curl -sf http://localhost:8765/health | grep -q '"status":"ok"'
+          curl -sf http://localhost:8765/dashboard | grep -q 'Argybargy'
           docker rm -f cc
