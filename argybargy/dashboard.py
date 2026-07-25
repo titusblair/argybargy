@@ -94,6 +94,12 @@ DASHBOARD_HTML = r"""<!doctype html>
   function E(tag, cls, attrs) {
     var e = document.createElement(tag);
     if (cls) { e.className = cls; }
+    /* Guard: a string in the attrs slot is a mistyped child, not attributes —
+       iterating a string here would silently set attributes "0","1","2"… */
+    if (typeof attrs === "string") {
+      e.appendChild(document.createTextNode(attrs));
+      attrs = null;
+    }
     if (attrs) {
       for (var k in attrs) {
         if (!Object.prototype.hasOwnProperty.call(attrs, k)) { continue; }
@@ -424,7 +430,7 @@ DASHBOARD_HTML = r"""<!doctype html>
         E("div", "conv-empty__t2", null, "Messages agents send here will show up live.")));
       return;
     }
-    tl.appendChild(E("div", "conv-daydiv", null, E("span", null, "today")));
+    tl.appendChild(E("div", "conv-daydiv", null, E("span", null, null, "today")));
     var groups = [];
     msgs.forEach(function (m) {
       var last = groups[groups.length - 1];

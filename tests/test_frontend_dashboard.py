@@ -170,6 +170,26 @@ def test_direct_messages_show_their_recipient(dash):
     assert "→ claude-ui" in dash.locator(".conv-timeline").inner_text()
 
 
+def test_day_divider_is_labelled(dash):
+    """Regression: the divider once rendered as two rules with no text."""
+    divider = dash.locator(".conv-daydiv")
+    assert divider.count() == 1
+    assert divider.inner_text().strip().lower() == "today"
+
+
+def test_no_element_has_numeric_attributes(dash):
+    """A string passed in E()'s attrs slot would silently set attributes 0,1,2…"""
+    stray = dash.evaluate(
+        "Array.from(document.querySelectorAll('*')).flatMap(function(e){"
+        "  return Array.from(e.attributes)"
+        "    .map(function(a){return a.name})"
+        "    .filter(function(n){return /^\\d+$/.test(n)})"
+        "    .map(function(n){return e.tagName.toLowerCase()+'['+n+']'});"
+        "})"
+    )
+    assert not stray, f"numeric attributes leaked from a mistyped E() call: {stray[:10]}"
+
+
 def test_consecutive_messages_group_under_one_author(dash, client, admin_headers, seeded):
     code = seeded["codes"]["gemini-ui"]
     auth = {"Authorization": f"Bearer {code}"}
