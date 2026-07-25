@@ -7,4 +7,9 @@ data/
 .claude/
 .DS_Store
 
-# dashboard/ (Vite + Preact sub-app) — see dashboard/.gitignore
+# coverage / test artifacts
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+test-results/
