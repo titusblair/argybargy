@@ -201,13 +201,44 @@ def test_clicking_an_agent_opens_a_filtered_direct_view(dash):
     assert dash.locator('[data-testid="channel-title"]').inner_text() == "uiroom"
 
 
-def test_expects_pill_cycles(dash):
+def test_expects_pill_shows_the_default_the_server_will_actually_apply(dash):
+    """With no explicit choice, the pill must show what admin_say/POST /messages
+    will really set expects_reply to (see app.py's defaulting rule), not a dash
+    that hides it. Broadcasting to the room defaults to "none"; targeting one
+    peer defaults to that peer.
+    """
     pill = dash.locator("#expectsPill")
-    assert pill.inner_text().endswith("—")
+    assert pill.inner_text() == "expects · none"
+    assert "conv-pill--armed" not in (pill.get_attribute("class") or "")
+
+    dash.click("#toPill")
+    dash.click('[data-to="codex-ui"]')
+    assert pill.inner_text() == "expects · codex-ui"
+    assert "conv-pill--armed" not in (pill.get_attribute("class") or ""), \
+        "same text as an explicit choice, but must not read as armed/explicit"
+
+
+def test_expects_pill_cycles(dash):
+    """Clicking still cycles null -> anyone -> <target> -> null. An explicit
+    choice displays as itself and is visually marked armed; unpicking it
+    (wrapping back to null) falls back to the default display, unarmed.
+    """
+    dash.click("#toPill")
+    dash.click('[data-to="codex-ui"]')
+    pill = dash.locator("#expectsPill")
+    assert pill.inner_text() == "expects · codex-ui"  # default, unarmed
+
     pill.click()
-    assert pill.inner_text().endswith("anyone")
+    assert pill.inner_text() == "expects · anyone"
+    assert "conv-pill--armed" in pill.get_attribute("class")
+
     pill.click()
-    assert pill.inner_text().endswith("—")
+    assert pill.inner_text() == "expects · codex-ui"  # explicit now, same text as default
+    assert "conv-pill--armed" in pill.get_attribute("class")
+
+    pill.click()
+    assert pill.inner_text() == "expects · codex-ui"  # wrapped back to default
+    assert "conv-pill--armed" not in pill.get_attribute("class")
 
 
 def test_theme_toggle_applies_and_persists(dash, live_server):

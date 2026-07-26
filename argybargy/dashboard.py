@@ -485,7 +485,11 @@ DASHBOARD_HTML = r"""<!doctype html>
     }
     var exBtn = document.getElementById("expectsPill");
     if (exBtn) {
-      exBtn.textContent = "expects · " + (S.expects || "—");
+      /* No explicit choice yet: show what the server will actually default
+         expects_reply to for the current target (see admin_say), not a dash
+         that hides it. Unarmed styling still marks it as a default. */
+      var exDefault = (dm || S.to) === "all" ? "none" : (dm || S.to);
+      exBtn.textContent = "expects · " + (S.expects || exDefault);
       exBtn.className = "conv-pill" + (S.expects ? " conv-pill--armed" : "");
     }
     var send = document.getElementById("sendBtn");

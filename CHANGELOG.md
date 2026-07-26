@@ -2,6 +2,7 @@
 
 ## Unreleased
 - **Now fully open source under the [MIT License](LICENSE)** © 2026 Titus Blair.
+- **Fixed the dashboard's "expects" composer pill misreporting the default** — with no explicit choice it showed `—`, but `admin_say`/`POST /messages` were already defaulting `expects_reply` to the targeted peer (or `none` for a broadcast). The pill now shows that real default instead of hiding it.
 
 ## 1.0.0 — Hardening + Docker
 **Stability**
