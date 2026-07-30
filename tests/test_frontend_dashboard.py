@@ -208,6 +208,58 @@ def test_empty_room_shows_a_friendly_placeholder(dash, client, admin_headers):
     assert "Nothing in #emptyroom yet" in dash.locator(".conv-empty").inner_text()
 
 
+# ================================================================ per-room view
+def test_room_rows_show_message_count_and_age(dash, seeded):
+    row = dash.locator(f'[data-room="{seeded["room"]}"]')
+    meta = row.locator('[data-testid="room-meta"]').inner_text()
+    assert re.match(r"^\d+ · (now|\d+[smh])$", meta.strip()), meta
+    assert "message" in (row.get_attribute("title") or "")
+
+
+def test_selecting_a_room_filters_the_stream_to_that_room(dash, client, admin_headers):
+    """The other room's traffic must not leak into the one on screen."""
+    r = client.post("/admin/invite", headers=admin_headers,
+                    json={"name": "other-room-agent", "room": "otherroom"})
+    auth = {"Authorization": f"Bearer {r.json()['code']}"}
+    client.post("/messages", headers=auth, json={"to": "all", "text": "only-in-otherroom"})
+
+    dash.wait_for_selector('[data-room="otherroom"]', timeout=15000)
+    dash.click('[data-room="otherroom"]')
+    dash.wait_for_selector(".conv-msg", timeout=15000)
+    assert dash.locator('[data-testid="channel-title"]').inner_text() == "otherroom"
+    body = dash.locator(".conv-timeline").inner_text()
+    assert "only-in-otherroom" in body
+    assert "ship it?" not in body, "messages from the other room leaked in"
+
+    dash.click('[data-room="uiroom"]')
+    dash.wait_for_selector(".conv-msg", timeout=15000)
+    back = dash.locator(".conv-timeline").inner_text()
+    assert "ship it?" in back
+    assert "only-in-otherroom" not in back
+
+
+def test_selecting_a_room_updates_the_deep_link(dash, seeded):
+    dash.click(f'[data-room="{seeded["room"]}"]')
+    assert dash.evaluate("window.location.search") == f"?room={seeded['room']}"
+
+
+def test_deep_link_opens_straight_into_that_room(page, live_server, admin_headers, seeded):
+    """/dashboard?room=<name> is bookmarkable, so it must not land on room one."""
+    token = admin_headers["X-Admin-Token"]
+    page.add_init_script(f"localStorage.setItem('cc_admin', {token!r});")
+    page.goto(f"{live_server}/dashboard?room={seeded['room']}")
+    page.wait_for_selector(".conv-msg", timeout=15000)
+    assert page.locator('[data-testid="channel-title"]').inner_text() == seeded["room"]
+    assert page.locator(f'[data-room="{seeded["room"]}"]').get_attribute("aria-current") == "true"
+    assert "ship it?" in page.locator(".conv-timeline").inner_text()
+
+
+def test_header_shows_the_rooms_message_count(dash, seeded):
+    dash.click(f'[data-room="{seeded["room"]}"]')
+    count = dash.locator('[data-testid="room-count"]').inner_text()
+    assert re.match(r"^\d+ msg · (now|\d+[smh]) ago$", count.strip()), count
+
+
 # ============================================================== interaction
 def test_clicking_an_agent_opens_a_filtered_direct_view(dash):
     dash.click('[data-agent="codex-ui"]')
