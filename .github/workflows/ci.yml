@@ -23,7 +23,10 @@ jobs:
       - name: Lint
         run: uv run ruff check .
       - name: Backend, CLI and unit tests
-        run: uv run --extra test pytest --ignore=tests/test_frontend_dashboard.py
+        # Skip anything that drives a real browser: this job has no Chromium.
+        # Glob, not one filename, so a new tests/test_frontend_*.py is covered
+        # the day it lands instead of failing the matrix first.
+        run: uv run --extra test pytest --ignore-glob='tests/test_frontend_*.py'
 
   # Full suite including the real-browser dashboard tests, plus the coverage gate.
   # One Python version — downloading the browser is the expensive part.
