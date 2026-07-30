@@ -1166,8 +1166,22 @@ DASHBOARD_HTML = r"""<!doctype html>
       btn.appendChild(document.createTextNode(" Regenerate admin token"));
       btn.className = "ad-btn danger";
       return poll();
-    }).catch(function () {
+    }).catch(function (e) {
       out.textContent = "";
+      /* Regenerating is itself an admin write, so a locked-out operator gets a
+         guaranteed 401 here and can never escape this way. "Regenerate failed."
+         reads as a broken button. Name the chicken and egg, and point at the
+         one place the current token can still be read. */
+      if (e && (e.status === 401 || e.status === 403)) {
+        out.appendChild(E("div", "ad-errorbox", { "data-testid": "regen-locked-out" },
+          E("div", null, null,
+            "Regenerating needs a currently valid admin token, and the relay answered 401 for the one in this browser. This button cannot get you back in."),
+          E("p", "ad-hint", null,
+            "Recover it on the machine running the relay: run ", E("code", null, null, "argybargy token"),
+            ", or read the ", E("code", null, null, "admin.token"),
+            " file in the relay's data directory. Paste that into the admin token field above and press Save.")));
+        return;
+      }
       out.appendChild(E("div", "ad-errorbox", null, "Regenerate failed."));
     });
   }
