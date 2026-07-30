@@ -10,7 +10,7 @@ import pytest
 from argybargy.audit import AuditLog
 from argybargy.auth import CodeStore
 from argybargy.db import connect
-from argybargy.hub import Hub
+from argybargy.hub import Hub, build_roster
 from argybargy.settings import Settings, _bool, _int, _list
 from argybargy.store import MessageStore
 from argybargy.util import parse_expires
@@ -193,6 +193,84 @@ def test_room_summaries_count_and_age_each_room(tmp_path):
 def test_room_summaries_ignore_rooms_with_no_messages(tmp_path):
     store = MessageStore(tmp_path / "empty-room.db")
     assert store.room_summaries() == []
+
+
+def test_members_by_room_lists_every_sender_per_room(tmp_path):
+    store = MessageStore(tmp_path / "members.db")
+    store.add("alpha", "a", "all", "1")
+    store.add("alpha", "b", "all", "2")
+    store.add("alpha", "a", "all", "3")
+    store.add("beta", "c", "all", "1")
+    by = store.members_by_room()
+    assert set(by) == {"alpha", "beta"}
+    assert [m["name"] for m in by["alpha"]] == ["a", "b"]
+    assert [m["name"] for m in by["beta"]] == ["c"]
+    for members in by.values():
+        for m in members:
+            assert m["last_ts"]
+            assert m["seconds_since_last"] < 60
+
+
+def test_members_by_room_is_empty_without_messages(tmp_path):
+    assert MessageStore(tmp_path / "no-members.db").members_by_room() == {}
+
+
+# ------------------------------------------------------------------- roster
+def _rows(roster, room):
+    return {r["name"]: r for r in roster.get(room, [])}
+
+
+def test_roster_keeps_an_agent_that_only_ever_posted():
+    """The whole point: presence is gone, the room still knows who worked in it."""
+    roster = build_roster({}, [], {"r": [{"name": "ghost", "seconds_since_last": 42.0, "last_ts": "t"}]})
+    row = _rows(roster, "r")["ghost"]
+    assert row["online"] is False
+    assert row["seconds_since_seen"] is None
+    assert row["last_message_seconds"] == 42.0
+    assert row["sources"] == ["messages"]
+
+
+def test_roster_keeps_a_code_holder_that_has_never_spoken():
+    roster = build_roster({}, [{"name": "quiet", "room": "r", "capabilities": "planner"}], {})
+    row = _rows(roster, "r")["quiet"]
+    assert row["sources"] == ["code"]
+    assert row["capabilities"] == "planner"
+    assert row["seconds_since_seen"] is None and row["last_message_seconds"] is None
+
+
+def test_roster_unions_all_three_sources_without_duplicating_a_name():
+    peers = {"r": [{"name": "both", "online": True, "seconds_since_seen": 1.0}]}
+    codes = [{"name": "both", "room": "r", "capabilities": "c"}]
+    members = {"r": [{"name": "both", "seconds_since_last": 9.0, "last_ts": "t"}]}
+    rows = _rows(build_roster(peers, codes, members), "r")
+    assert list(rows) == ["both"]
+    assert rows["both"]["sources"] == ["presence", "code", "messages"]
+    assert rows["both"]["online"] is True
+    assert rows["both"]["seconds_since_seen"] == 1.0
+    assert rows["both"]["last_message_seconds"] == 9.0
+
+
+def test_roster_does_not_leak_members_across_rooms():
+    codes = [{"name": "a", "room": "r1", "capabilities": ""},
+             {"name": "b", "room": "r2", "capabilities": ""}]
+    roster = build_roster({}, codes, {"r1": [{"name": "c", "seconds_since_last": 1.0, "last_ts": "t"}]})
+    assert sorted(_rows(roster, "r1")) == ["a", "c"]
+    assert sorted(_rows(roster, "r2")) == ["b"]
+
+
+def test_roster_rows_are_sorted_by_name():
+    members = {"r": [{"name": n, "seconds_since_last": 1.0, "last_ts": "t"} for n in ("zed", "amy", "moe")]}
+    assert [r["name"] for r in build_roster({}, [], members)["r"]] == ["amy", "moe", "zed"]
+
+
+def test_roster_ignores_a_code_with_no_room():
+    assert build_roster({}, [{"name": "orphan", "room": "", "capabilities": ""}], {}) == {}
+
+
+def test_roster_online_flag_comes_only_from_live_presence():
+    """Posting recently must not fake presence: online still means connected now."""
+    members = {"r": [{"name": "busy", "seconds_since_last": 0.0, "last_ts": "t"}]}
+    assert _rows(build_roster({}, [], members), "r")["busy"]["online"] is False
 
 
 # --------------------------------------------------------------------- auth

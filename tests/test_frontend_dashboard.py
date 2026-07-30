@@ -293,6 +293,140 @@ def test_a_valid_token_clears_the_auth_notice(dash):
     assert dash.locator('[data-testid="sidebar-auth-note"]').count() == 0
 
 
+# ================================================== reaching the token field cold
+def test_cold_load_hides_the_token_field_behind_the_drawer(anon):
+    """The field does not exist until the drawer has been rendered once.
+
+    That is the trap: on a never-authenticated load there is nothing on screen to
+    type into, so the empty state has to both say where it is and get you there.
+    """
+    assert anon.evaluate("!!document.getElementById('adToken')") is False
+    assert anon.locator('[data-testid="auth-where"]').count() == 1
+    where = anon.locator('[data-testid="auth-where"]').inner_text()
+    assert "admin drawer" in where and "gear" in where
+
+
+def test_the_cold_cta_opens_the_drawer_and_selects_the_field(anon):
+    """Focus alone is not enough: a wrong token in the box must be replaced."""
+    anon.click("#authOpenDrawer")
+    anon.wait_for_selector("#adToken", timeout=15000)
+    anon.fill("#adToken", "a-stale-value")
+    anon.click("#adClose")
+    anon.click("#authOpenDrawer")
+    assert anon.evaluate("document.activeElement.id") == "adToken"
+    selected = anon.evaluate(
+        "() => { var f = document.getElementById('adToken');"
+        "return f.value.substring(f.selectionStart, f.selectionEnd); }"
+    )
+    assert selected == "a-stale-value", "a paste must overwrite, not append"
+
+
+def test_the_cold_path_works_on_a_phone_sized_viewport(page, live_server, seeded):
+    """The gear lives in an off-canvas sidebar on mobile, so the CTA is the only route."""
+    page.set_viewport_size({"width": 375, "height": 720})
+    page.add_init_script("localStorage.removeItem('cc_admin');")
+    page.goto(f"{live_server}/dashboard")
+    page.wait_for_selector('[data-testid="auth-required"]', timeout=15000)
+    assert page.locator("#authOpenDrawer").is_visible()
+    page.click("#authOpenDrawer")
+    page.wait_for_selector("#adToken", timeout=15000)
+    assert page.locator("#adToken").is_visible()
+
+
+def test_the_gear_says_a_token_is_needed_while_locked_out(anon):
+    gear = anon.locator("#openDrawer")
+    assert "admin token" in (gear.get_attribute("aria-label") or "")
+    assert "token" in (gear.get_attribute("title") or "")
+
+
+def test_the_gear_label_goes_back_to_normal_once_signed_in(dash):
+    assert dash.locator("#openDrawer").get_attribute("aria-label") == "Open admin drawer"
+
+
+# ======================================================= saving a token reports back
+@pytest.fixture
+def anon_drawer(anon):
+    """Cold dashboard with the admin drawer open on the token field."""
+    anon.click("#authOpenDrawer")
+    anon.wait_for_selector("#adToken", timeout=15000)
+    return anon
+
+
+def test_saving_a_rejected_token_says_it_was_rejected(anon_drawer):
+    """Silence on a bad token is what made Save look like a dead button."""
+    anon_drawer.fill("#adToken", "not-the-admin-token")
+    anon_drawer.click("#adSaveToken")
+    anon_drawer.wait_for_selector('[data-testid="token-save-note"]', timeout=15000)
+    note = anon_drawer.locator('[data-testid="token-save-note"]')
+    anon_drawer.wait_for_function(
+        "() => { var n = document.querySelector('[data-testid=\"token-save-note\"]');"
+        "return n && n.innerText.indexOf('rejected') >= 0; }",
+        timeout=15000,
+    )
+    text = note.inner_text()
+    assert "rejected" in text
+    assert "401" in text
+    assert "argybargy token" in text, "must say how to find the real one"
+    assert "ad-errorbox" in (note.get_attribute("class") or "")
+
+
+def test_saving_an_empty_token_says_the_field_was_empty(anon_drawer):
+    anon_drawer.fill("#adToken", "   ")
+    anon_drawer.click("#adSaveToken")
+    anon_drawer.wait_for_function(
+        "() => { var n = document.querySelector('[data-testid=\"token-save-note\"]');"
+        "return n && n.innerText.indexOf('No token entered') >= 0; }",
+        timeout=15000,
+    )
+
+
+def test_saving_a_good_token_confirms_visibly(anon_drawer, admin_headers):
+    anon_drawer.fill("#adToken", admin_headers["X-Admin-Token"])
+    anon_drawer.click("#adSaveToken")
+    anon_drawer.wait_for_function(
+        "() => { var n = document.querySelector('[data-testid=\"token-save-note\"]');"
+        "return n && n.innerText.indexOf('accepted') >= 0; }",
+        timeout=15000,
+    )
+    note = anon_drawer.locator('[data-testid="token-save-note"]')
+    assert "ad-resultbox" in (note.get_attribute("class") or "")
+    assert anon_drawer.locator('[data-testid="auth-required"]').count() == 0
+
+
+def test_the_admin_token_is_never_written_outside_its_own_field(anon_drawer, admin_headers):
+    """The value belongs in the input the operator controls, and nowhere else."""
+    token = admin_headers["X-Admin-Token"]
+    anon_drawer.fill("#adToken", token)
+    anon_drawer.click("#adSaveToken")
+    anon_drawer.wait_for_function(
+        "() => { var n = document.querySelector('[data-testid=\"token-save-note\"]');"
+        "return n && n.innerText.indexOf('accepted') >= 0; }",
+        timeout=15000,
+    )
+    assert token not in anon_drawer.inner_text("body")
+    assert anon_drawer.evaluate("document.getElementById('adToken').value") == token
+
+
+# =============================================== regenerating while locked out
+def test_regenerate_while_locked_out_explains_the_chicken_and_egg(anon_drawer):
+    """Regenerating is itself an admin write, so a 401 here is permanent, not a glitch.
+
+    Only the failing path is exercised. A successful regenerate would rotate the
+    token out from under every other test in the session.
+    """
+    anon_drawer.fill("#adToken", "not-the-admin-token")
+    anon_drawer.click("#adSaveToken")
+    anon_drawer.click("#adRegen")          # arms the confirm
+    anon_drawer.click("#adRegen")          # fires it
+    anon_drawer.wait_for_selector('[data-testid="regen-locked-out"]', timeout=15000)
+    text = anon_drawer.locator('[data-testid="regen-locked-out"]').inner_text()
+    assert "currently valid admin token" in text
+    assert "401" in text
+    assert "cannot get you back in" in text
+    assert "argybargy token" in text or "admin.token" in text
+    assert text.strip() != "Regenerate failed."
+
+
 # ============================================================== interaction
 def test_clicking_an_agent_opens_a_filtered_direct_view(dash):
     dash.click('[data-agent="codex-ui"]')
@@ -485,3 +619,178 @@ def test_interactive_controls_have_accessible_names(dash):
 def test_active_room_is_marked_for_assistive_tech(dash, seeded):
     active = dash.locator(f'[data-room="{seeded["room"]}"]')
     assert active.get_attribute("aria-current") == "true"
+
+
+# ================================================= durable roster (bug: empty AGENTS)
+@pytest.fixture
+def drop_presence():
+    """Forget one room's in-memory presence, the way restarting the relay does.
+
+    Scoped to a single room and put back afterwards, so the rest of the session
+    keeps whatever it had seen.
+    """
+    from argybargy import app as appmod
+    dropped = {}
+
+    def _drop(room):
+        dropped[room] = appmod.hub._last_seen.pop(room, {})
+
+    yield _drop
+    for room, seen in dropped.items():
+        appmod.hub._last_seen[room] = seen
+
+
+@pytest.fixture
+def roster_room(client, admin_headers, drop_presence):
+    """A room whose agents have all finished, plus one that was never heard from."""
+    room = "rosterroom"
+    for name in ("roster-worker", "roster-invitee"):
+        client.post("/admin/invite", headers=admin_headers, json={"name": name, "room": room})
+    r = client.post("/admin/invite", headers=admin_headers, json={"name": "roster-worker-2", "room": room})
+    auth = {"Authorization": f"Bearer {r.json()['code']}"}
+    client.post("/messages", headers=auth, json={"to": "all", "text": "finished my part"})
+    drop_presence(room)
+    return room
+
+
+@pytest.fixture
+def roster_page(page, live_server, admin_headers, roster_room):
+    token = admin_headers["X-Admin-Token"]
+    page.add_init_script(f"localStorage.setItem('cc_admin', {token!r});")
+    page.goto(f"{live_server}/dashboard?room={roster_room}")
+    page.wait_for_selector('[data-testid="agent-list"] [data-agent]', timeout=15000)
+    return page
+
+
+def test_agents_list_is_not_empty_after_presence_is_lost(roster_page):
+    """The reported bug: relay restarted, every agent had finished, the list went blank."""
+    row = roster_page.locator('[data-testid="agent-list"] [data-agent="roster-worker-2"]')
+    assert row.count() == 1, "an agent that posted must stay in the room's agent list"
+    assert row.locator('[data-testid="last-seen"]').inner_text().strip() != "online"
+
+
+def test_agents_list_is_scoped_to_the_room_in_view(roster_page):
+    """Other rooms' agents must not be mixed into this room's roster."""
+    names = roster_page.locator('[data-testid="agent-list"] [data-agent]').evaluate_all(
+        "els => els.map(e => e.getAttribute('data-agent'))")
+    assert "roster-worker-2" in names
+    assert not [n for n in names if not n.startswith("roster-")], names
+
+
+def test_agent_count_reads_online_over_total(roster_page):
+    assert roster_page.locator('[data-testid="agent-count"]').inner_text().strip() == "· 0/3"
+
+
+def test_a_code_holder_that_never_spoke_folds_under_invited(roster_page):
+    toggle = roster_page.locator("#invitedToggle")
+    assert "Invited · 2" in toggle.inner_text()
+    assert roster_page.locator('[data-testid="invited-list"]').count() == 0
+    toggle.click()
+    row = roster_page.locator('[data-testid="invited-list"] [data-agent="roster-invitee"]')
+    assert row.count() == 1
+    assert row.locator('[data-testid="last-seen"]').inner_text().strip() == "invited"
+
+
+def test_online_still_means_connected_right_now(roster_page, client, roster_room, admin_headers):
+    """The roster widened who is listed. It must not have widened what online means."""
+    r = client.post("/admin/invite", headers=admin_headers,
+                    json={"name": "roster-live", "room": roster_room})
+    client.get("/whoami", headers={"Authorization": f"Bearer {r.json()['code']}"})
+    roster_page.wait_for_selector('[data-agent="roster-live"] [data-testid="last-seen"]', timeout=15000)
+    roster_page.wait_for_function(
+        "() => document.querySelector('[data-agent=\"roster-live\"] [data-testid=\"last-seen\"]')"
+        ".innerText.trim() === 'online'", timeout=15000)
+    stamps = roster_page.locator('[data-testid="agent-list"] [data-testid="last-seen"]').evaluate_all(
+        "els => els.map(e => e.innerText.trim())")
+    assert stamps.count("online") == 1, stamps
+
+
+# ============================================= persisted unread (bug: reset on refresh)
+@pytest.fixture
+def unread_rooms(client, admin_headers):
+    """Two rooms with traffic: one to stand in, one to leave and come back to."""
+    codes = {}
+    for room in ("unreadhome", "unreadother"):
+        r = client.post("/admin/invite", headers=admin_headers,
+                        json={"name": f"agent-{room}", "room": room})
+        codes[room] = {"Authorization": f"Bearer {r.json()['code']}"}
+        client.post("/messages", headers=codes[room], json={"to": "all", "text": f"first in {room}"})
+    return codes
+
+
+def _open_dashboard(page, live_server, token, room):
+    page.add_init_script(f"localStorage.setItem('cc_admin', {token!r});")
+    page.goto(f"{live_server}/dashboard?room={room}")
+    page.wait_for_selector('[data-room="unreadother"]', timeout=15000)
+    return page
+
+
+def _has_unread(page, room):
+    return page.locator(f'[data-room="{room}"] [data-testid="room-unread"]').count() == 1
+
+
+def test_a_room_you_already_read_stays_read_across_a_refresh(page, live_server, admin_headers, unread_rooms):
+    """The reported bug: every refresh marked every room you were not standing in."""
+    token = admin_headers["X-Admin-Token"]
+    _open_dashboard(page, live_server, token, "unreadhome")
+    page.click('[data-room="unreadother"]')          # read it
+    page.wait_for_timeout(500)
+    page.click('[data-room="unreadhome"]')           # stand somewhere else
+    page.wait_for_timeout(500)
+    assert not _has_unread(page, "unreadother")
+
+    page.reload()
+    page.wait_for_selector('[data-room="unreadother"]', timeout=15000)
+    page.wait_for_timeout(500)
+    assert not _has_unread(page, "unreadother"), "a room read before the refresh came back unread"
+
+
+def test_a_message_that_arrived_while_you_were_away_is_still_unread_after_a_refresh(
+        page, live_server, admin_headers, unread_rooms):
+    """The other half: persisting must not swallow genuinely new traffic."""
+    token = admin_headers["X-Admin-Token"]
+    _open_dashboard(page, live_server, token, "unreadhome")
+    page.click('[data-room="unreadother"]')
+    page.wait_for_timeout(500)
+    page.click('[data-room="unreadhome"]')
+    page.wait_for_timeout(500)
+
+    from argybargy import app as appmod
+    appmod.message_store.add("unreadother", "agent-unreadother", "all", "arrived while away")
+    page.wait_for_timeout(4000)                      # one poll
+    assert _has_unread(page, "unreadother")
+
+    page.reload()
+    page.wait_for_selector('[data-room="unreadother"]', timeout=15000)
+    page.wait_for_timeout(500)
+    assert _has_unread(page, "unreadother"), "unread that survived the poll must survive the reload"
+
+
+def test_a_mark_left_over_from_an_older_database_does_not_pin_a_room_read(
+        page, live_server, admin_headers, unread_rooms):
+    """A stored mark above the room's own last_seq is stale, not a claim to have read it."""
+    token = admin_headers["X-Admin-Token"]
+    page.add_init_script(f"localStorage.setItem('cc_admin', {token!r});")
+    page.add_init_script('localStorage.setItem("cc_seen", JSON.stringify({unreadother: 999999}));')
+    page.goto(f"{live_server}/dashboard?room=unreadhome")
+    page.wait_for_selector('[data-room="unreadother"]', timeout=15000)
+    page.wait_for_timeout(500)
+    assert _has_unread(page, "unreadother"), "a stale high mark must not read as 'already seen'"
+    assert page.evaluate('JSON.parse(localStorage.getItem("cc_seen")).unreadother') == 0
+
+
+def test_unread_marks_are_written_to_local_storage(page, live_server, admin_headers, unread_rooms):
+    token = admin_headers["X-Admin-Token"]
+    _open_dashboard(page, live_server, token, "unreadhome")
+    page.wait_for_function(
+        '() => { var s = localStorage.getItem("cc_seen");'
+        ' return s && JSON.parse(s).unreadhome > 0; }', timeout=15000)
+
+
+def test_unreadable_stored_marks_do_not_break_the_boot(page, live_server, admin_headers, unread_rooms):
+    token = admin_headers["X-Admin-Token"]
+    page.add_init_script(f"localStorage.setItem('cc_admin', {token!r});")
+    page.add_init_script('localStorage.setItem("cc_seen", "{not json");')
+    page.goto(f"{live_server}/dashboard?room=unreadhome")
+    page.wait_for_selector('[data-testid="room-list"] [data-room]', timeout=15000)
+    assert page.locator('[data-testid="channel-title"]').inner_text() == "unreadhome"

@@ -140,6 +140,29 @@ class MessageStore:
         out.sort(key=lambda s: (s["seconds_since_last"], s["room"]))
         return out
 
+    def members_by_room(self) -> dict:
+        """Everyone who has ever posted, per room, with the age of their last message.
+
+        This is the durable half of "who belongs to this room". Presence lives in
+        memory and empties on restart; a sender row does not, so an agent that did
+        its work and stopped is still a member of the room it worked in. Rides the
+        existing idx_msg_room_seq(room, seq) index for the grouping.
+        """
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT room, sender, MAX(ts) AS last_ts FROM messages GROUP BY room, sender"
+            ).fetchall()
+        now = datetime.now(timezone.utc)
+        out: dict = {}
+        for r in rows:
+            out.setdefault(r["room"], []).append(
+                {"name": r["sender"], "last_ts": r["last_ts"],
+                 "seconds_since_last": _seconds_since(r["last_ts"], now)}
+            )
+        for members in out.values():
+            members.sort(key=lambda m: m["name"])
+        return out
+
     def claim(self, room, seq, peer) -> dict:
         """Atomically assign the responder for a message. First caller wins."""
         with self._lock:

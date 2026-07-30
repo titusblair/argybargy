@@ -32,6 +32,8 @@ DASHBOARD_HTML = r"""<!doctype html>
 .sb-room__name{text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;overflow:hidden}.sb-room__meta{font-family:var(--mono);color:var(--faint);flex:none;font-size:10px;letter-spacing:.01em}.sb-room.active .sb-room__meta{color:var(--muted)}.sb-room.unread .sb-room__meta{color:var(--text)}.conv-header__count{font-family:var(--mono);color:var(--faint);white-space:nowrap;flex:none;font-size:11px}
 /* a 401 is not an empty relay: say so instead of rendering a blank room */
 .sb-authnote{color:var(--faint);padding:2px 16px 0;font-size:11px;line-height:1.5}.conv-empty__stack{place-items:center;max-width:44ch;display:grid}.conv-empty__cta{margin-top:14px}
+/* saving a token, and a regenerate you can never win, both have to say so */
+.ad-notebox{color:var(--muted);background:var(--raised);border:1px solid var(--border-strong);border-radius:9px;margin-top:10px;padding:10px 12px;font-size:12px;line-height:1.6}.ad-errorbox .ad-hint{color:color-mix(in srgb, var(--red) 60%, var(--faint));margin-top:6px}.ad-errorbox code,.ad-notebox code{font-family:var(--mono);font-size:11px}.conv-empty__where{color:var(--faint);text-align:center;margin-top:8px;font-size:11.5px;line-height:1.5}
 </style>
 </head>
 <body>
@@ -57,9 +59,12 @@ DASHBOARD_HTML = r"""<!doctype html>
     ["opencode", /opencode/i]
   ];
   var PERSON_RE = /operator|human|\byou\b/i;
+  /* Sidebar sort order for a roster row: live first, then by how recently we heard it. */
+  var LIFE_ORDER = { online: 0, fading: 1, offline: 2, unseen: 3 };
 
   var TOKEN_KEY = "cc_admin";
   var THEME_KEY = "cc_theme";
+  var SEEN_KEY = "cc_seen";
   var POLL_MS = 3000;
   var FADE_MS = 8000;
   var BOTTOM_SLOP_PX = 32;
@@ -68,19 +73,44 @@ DASHBOARD_HTML = r"""<!doctype html>
     ["60m", "60 minutes"], ["1d", "1 day"], ["1w", "1 week"], ["1mo", "1 month"]
   ];
 
+  /* Unread lives in localStorage next to the token and the theme. Held in memory
+     only, it reset on every refresh, so every room you were not standing in came
+     back unread, which is the same as having no unread marks at all. */
+  function loadSeen() {
+    try {
+      var raw = JSON.parse(localStorage.getItem(SEEN_KEY) || "{}");
+      var out = {};
+      Object.keys(raw).forEach(function (r) {
+        var n = Number(raw[r]);
+        if (isFinite(n) && n > 0) { out[r] = n; }
+      });
+      return out;
+    } catch (e) {
+      return {};   /* corrupt or unreadable: start clean rather than break the boot */
+    }
+  }
+  function saveSeen() {
+    try {
+      localStorage.setItem(SEEN_KEY, JSON.stringify(S.seen));
+    } catch (e) {
+      /* quota or a locked-down profile: unread degrades to session-only, nothing else breaks */
+    }
+  }
+
   /* ---------------------------------------------------------------- state */
   var S = {
     token: localStorage.getItem(TOKEN_KEY) || "",
     data: null,               /* last /admin/state payload */
     conn: "idle",             /* idle | live | error */
     authError: false,         /* /admin/state answered 401/403: no token, or a stale one */
+    tokenSave: null,          /* what the last Save did: checking | ok | empty | rejected | a reason */
     view: { kind: "room", room: "", agent: null },
     agents: [],               /* reconciled presence */
-    seen: {},                 /* room -> last_seq the operator has looked at */
+    seen: loadSeen(),         /* room -> last_seq the operator has looked at, persisted */
     fetchedAt: Date.now(),    /* when the current payload landed, for age drift */
     now: Date.now(),
     stick: true,              /* timeline pinned to bottom */
-    recentOpen: false,
+    invitedOpen: false,
     navOpen: false,
     drawerOpen: false,
     menuOpen: false,
@@ -196,20 +226,32 @@ DASHBOARD_HTML = r"""<!doctype html>
     var total = Math.max(0, Math.floor((now - ms) / 1000));
     return Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
   }
+  /* `peers` is live presence, which is in-memory on the relay and so empties on a
+     restart. `roster` is the durable membership: code holders plus everyone who has
+     ever posted in the room, with presence folded in. Read the roster, and let
+     presence decide only the dot and the stamp. Fall back to peers so a dashboard
+     pointed at an older relay still draws something. */
   function reconcile(data) {
     var prev = {};
     S.agents.forEach(function (a) { prev[a.room + "/" + a.name] = a; });
+    var src = data.roster || data.peers || {};
     var out = [];
-    Object.keys(data.peers || {}).forEach(function (room) {
-      (data.peers[room] || []).forEach(function (p) {
+    Object.keys(src).forEach(function (room) {
+      (src[room] || []).forEach(function (p) {
         var was = prev[room + "/" + p.name];
+        /* Live presence first, then the age of its last message. Null on both means
+           invited and never heard from, which is a different thing from idle. */
+        var seconds = p.seconds_since_seen;
+        if (seconds === null || seconds === undefined) { seconds = p.last_message_seconds; }
+        var quiet = seconds === null || seconds === undefined;
         var life;
         if (p.online) { life = "online"; }
-        else { life = p.seconds_since_seen * 1000 >= FADE_MS ? "offline" : "fading"; }
+        else if (quiet) { life = "unseen"; }
+        else { life = seconds * 1000 >= FADE_MS ? "offline" : "fading"; }
         out.push({
-          name: p.name, room: room, online: p.online, life: life,
-          secondsSinceSeen: p.seconds_since_seen, hue: hueFor(p.name),
-          justJoined: p.online && !(was && was.online)
+          name: p.name, room: room, online: !!p.online, life: life, quiet: quiet,
+          secondsSinceSeen: quiet ? 0 : seconds, hue: hueFor(p.name),
+          justJoined: !!p.online && !(was && was.online)
         });
       });
     });
@@ -217,7 +259,7 @@ DASHBOARD_HTML = r"""<!doctype html>
   }
   /* One row per agent name, keeping the liveliest sighting across rooms. */
   function dedupe(views) {
-    var rank = { offline: 0, fading: 1, online: 2 };
+    var rank = { unseen: -1, offline: 0, fading: 1, online: 2 };
     var by = {};
     views.forEach(function (v) {
       var ex = by[v.name];
@@ -229,6 +271,7 @@ DASHBOARD_HTML = r"""<!doctype html>
         online: ex.online || v.online,
         justJoined: ex.justJoined || v.justJoined,
         life: better ? v.life : ex.life,
+        quiet: better ? !!v.quiet : !!ex.quiet,
         secondsSinceSeen: better ? v.secondsSinceSeen : ex.secondsSinceSeen
       };
     });
@@ -265,7 +308,23 @@ DASHBOARD_HTML = r"""<!doctype html>
   /* The room in view is, by definition, read. */
   function markSeen() {
     var s = roomSummaries()[S.view.room];
-    if (s) { S.seen[S.view.room] = s.last_seq; }
+    if (!s) { return; }
+    if (S.seen[S.view.room] === s.last_seq) { return; }
+    S.seen[S.view.room] = s.last_seq;
+    saveSeen();
+  }
+  /* A stored mark above the room's own last_seq means the sequence restarted under
+     us: a fresh database, since retention only ever deletes the oldest rows and so
+     never lowers MAX(seq). Those messages are new to this browser, so drop the mark
+     to zero and let them read as unread. Keeping the high mark would pin the room
+     permanently read; refusing to touch it would pin it permanently unread. */
+  function clampSeen() {
+    var sums = roomSummaries();
+    var changed = false;
+    Object.keys(S.seen).forEach(function (r) {
+      if (sums[r] && S.seen[r] > sums[r].last_seq) { S.seen[r] = 0; changed = true; }
+    });
+    if (changed) { saveSeen(); }
   }
 
   /* ------------------------------------------------------------- deep link */
@@ -367,19 +426,24 @@ DASHBOARD_HTML = r"""<!doctype html>
   function renderSidebar() {
     var nav = document.getElementById("sbNav");
     if (!nav) { return; }
-    var roster = dedupe(S.agents);
+    /* The Agents list is the roster of the room in view: everyone who belongs here,
+       not everyone who happens to hold a socket open. Presence is the dot and the
+       stamp on each row, never the reason a row exists. */
+    var roster = dedupe(S.agents.filter(function (a) { return a.room === S.view.room; }));
     var key = roster.map(function (r) { return r.name + ":" + r.secondsSinceSeen + ":" + r.life; }).join("|");
     if (key !== S.baseline.key) { S.baseline = { now: S.now, key: key }; }
     var drift = Math.max(0, (S.now - S.baseline.now) / 1000);
     var shown = function (a) { return a.life === "online" ? 0 : a.secondsSinceSeen + drift; };
 
-    var visible = roster.filter(function (r) { return r.life !== "offline"; })
+    var visible = roster.filter(function (r) { return r.life !== "unseen"; })
       .sort(function (a, b) {
-        var ra = a.life === "online" ? 0 : 1, rb = b.life === "online" ? 0 : 1;
-        return ra - rb || a.name.localeCompare(b.name);
+        return (LIFE_ORDER[a.life] - LIFE_ORDER[b.life]) ||
+          (a.secondsSinceSeen - b.secondsSinceSeen) || a.name.localeCompare(b.name);
       });
-    var offline = roster.filter(function (r) { return r.life === "offline"; })
-      .sort(function (a, b) { return a.secondsSinceSeen - b.secondsSinceSeen; });
+    /* Holds a code for this room and has never spoken or connected. Real membership,
+       but nothing to report about it, so it folds away under its own heading. */
+    var unseen = roster.filter(function (r) { return r.life === "unseen"; })
+      .sort(function (a, b) { return a.name.localeCompare(b.name); });
     var onlineCount = roster.filter(function (r) { return r.life === "online"; }).length;
 
     var out = document.createDocumentFragment();
@@ -408,21 +472,32 @@ DASHBOARD_HTML = r"""<!doctype html>
       rl.appendChild(E("div", "sb-authnote", { "data-testid": "sidebar-auth-note" },
         "Hidden until the admin token is set."));
     }
+    /* The gear is the only permanent way to the token field, and it is built once
+       in the shell, so relabel it in place while there is no working token. */
+    var gear = document.getElementById("openDrawer");
+    if (gear) {
+      gear.title = S.authError ? "Admin: paste the admin token here" : "Admin";
+      gear.setAttribute("aria-label",
+        S.authError ? "Open admin drawer to paste the admin token" : "Open admin drawer");
+    }
     out.appendChild(rl);
 
-    out.appendChild(E("div", "sb-label", null, "Agents ",
-      E("span", "sb-n", { text: "· " + onlineCount })));
+    out.appendChild(E("div", "sb-label", {
+      title: onlineCount + " of " + roster.length + " online in this room"
+    }, "Agents ",
+      E("span", "sb-n", { "data-testid": "agent-count", text: "· " + onlineCount + "/" + roster.length })));
     var al = E("div", null, { "data-testid": "agent-list" });
     visible.forEach(function (a) { al.appendChild(agentRow(a, shown(a), false)); });
     out.appendChild(al);
 
-    if (offline.length) {
-      out.appendChild(E("button", S.recentOpen ? "sb-recent-head open" : "sb-recent-head",
-        { type: "button", id: "recentToggle", "aria-expanded": S.recentOpen ? "true" : "false" },
-        icon("caretRight", 12, "sb-ph"), " Recently offline · " + offline.length));
-      if (S.recentOpen) {
-        var ol = E("div", null, { "data-testid": "recent-offline-list" });
-        offline.forEach(function (a) { ol.appendChild(agentRow(a, shown(a), true)); });
+    if (unseen.length) {
+      out.appendChild(E("button", S.invitedOpen ? "sb-recent-head open" : "sb-recent-head",
+        { type: "button", id: "invitedToggle", "aria-expanded": S.invitedOpen ? "true" : "false",
+          title: "Holds a code for this room, but has not connected or posted yet" },
+        icon("caretRight", 12, "sb-ph"), " Invited · " + unseen.length));
+      if (S.invitedOpen) {
+        var ol = E("div", null, { "data-testid": "invited-list" });
+        unseen.forEach(function (a) { ol.appendChild(agentRow(a, 0, true)); });
         out.appendChild(ol);
       }
     }
@@ -436,6 +511,12 @@ DASHBOARD_HTML = r"""<!doctype html>
         ? "relay reachable — /admin/state answering" : "connection: " + S.conn);
     }
   }
+  /* What the row says on its right-hand side: live, last heard from, or never yet. */
+  function agentStamp(a, seconds) {
+    if (a.life === "online") { return "online"; }
+    if (a.quiet) { return "invited"; }
+    return lastSeen(seconds) + " ago";
+  }
   function agentRow(a, seconds, recent) {
     var cls = [recent ? "sb-arow sb-recent-row" : "sb-arow"];
     if (!recent && a.life === "fading") { cls.push("fading"); }
@@ -443,7 +524,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     if (S.view.kind === "dm" && S.view.agent === a.name) { cls.push("active"); }
     var b = E("button", cls.join(" "), {
       type: "button", "data-agent": a.name,
-      "aria-label": a.name + " — " + (a.life === "online" ? "online" : lastSeen(seconds) + " ago") + ", open direct view"
+      "aria-label": a.name + " — " + agentStamp(a, seconds) + ", open direct view"
     });
     b.style.setProperty("--hue", a.hue);
     b.appendChild(avatar(a.name, "row", a.life === "online" ? "on" : "off"));
@@ -452,7 +533,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     if (brand) { nm.style.setProperty("--agent", brand); }
     b.appendChild(nm);
     b.appendChild(E("span", "sb-alast mono",
-      { "data-testid": "last-seen", text: a.life === "online" ? "online" : lastSeen(seconds) + " ago" }));
+      { "data-testid": "last-seen", text: agentStamp(a, seconds) }));
     return b;
   }
 
@@ -478,8 +559,12 @@ DASHBOARD_HTML = r"""<!doctype html>
         icon("arrowLeft", 16, "ph")));
       h.appendChild(avatar(who, "round-sm-dot" === "" ? "sm" : "sm", on ? "on" : "off"));
       h.appendChild(E("span", "conv-header__name", { "data-testid": "channel-title", text: who }));
+      /* A roster member with no sighting at all has no age to report, so say that
+         rather than printing "offline · now ago", which reads as a fresh drop-out. */
+      var quiet = !peer || peer.quiet;
       h.appendChild(E("span", "conv-header__meta mono",
-        { text: on ? "online · " + lastSeen(secs) : "offline · " + lastSeen(secs) + " ago" }));
+        { text: on ? "online · " + lastSeen(secs)
+                   : (quiet ? "invited · not seen yet" : "offline · " + lastSeen(secs) + " ago") }));
       h.appendChild(E("span", "conv-header__filterchip",
         { title: "Direct view = client-side filter over room messages" },
         icon("at", 11, "ph"), " filtered · #" + S.view.room));
@@ -521,7 +606,12 @@ DASHBOARD_HTML = r"""<!doctype html>
           E("div", "conv-empty__t2", null,
             "The relay answered 401. Rooms and messages stay hidden until you paste the admin token."),
           E("button", "ad-btn primary conv-empty__cta",
-            { type: "button", id: "authOpenDrawer" }, "Paste admin token"))));
+            { type: "button", id: "authOpenDrawer" }, "Paste admin token"),
+          /* The field lives inside the admin drawer and does not exist until the
+             drawer has been rendered once, so from a cold load there is nothing
+             on screen to find. Name the route as well as offering the button. */
+          E("div", "conv-empty__where", { "data-testid": "auth-where" },
+            "The field is in the admin drawer, behind the gear in the sidebar footer."))));
       return;
     }
     if (!msgs.length) {
@@ -639,8 +729,44 @@ DASHBOARD_HTML = r"""<!doctype html>
     if (!S.drawerOpen) { return; }
     if (!document.getElementById("adRoot")) { buildDrawer(); }
     renderKeys();
+    renderTokenNote();
     var u = document.getElementById("adUrl");
     if (u) { u.textContent = (S.data && S.data.public_url) || ""; }
+  }
+  /* Saving a token used to change nothing on screen either way, so a rejected
+     token was indistinguishable from a dead button. Report which one it was.
+     Only the outcome is ever drawn here. The token itself never is. */
+  function renderTokenNote() {
+    var out = document.getElementById("adTokenOut");
+    if (!out) { return; }
+    out.textContent = "";
+    var st = S.tokenSave;
+    if (!st) { return; }
+    if (st === "checking") {
+      out.appendChild(E("div", "ad-notebox", { "data-testid": "token-save-note" },
+        "Checking the token with the relay..."));
+      return;
+    }
+    if (st === "ok") {
+      out.appendChild(E("div", "ad-resultbox", { "data-testid": "token-save-note" },
+        "Token accepted. You are signed in, and rooms are loading."));
+      return;
+    }
+    if (st === "empty") {
+      out.appendChild(E("div", "ad-errorbox", { "data-testid": "token-save-note" },
+        "No token entered. Paste the admin token in the field above, then press Save."));
+      return;
+    }
+    if (st === "rejected") {
+      out.appendChild(E("div", "ad-errorbox", { "data-testid": "token-save-note" },
+        E("div", null, null,
+          "That token was rejected. The relay answered 401, so it is not the admin token this relay is running with."),
+        E("p", "ad-hint", null, "Print the current one with ", E("code", null, null, "argybargy token"),
+          " on the machine running the relay, then paste it here.")));
+      return;
+    }
+    out.appendChild(E("div", "ad-errorbox", { "data-testid": "token-save-note" },
+      "Saved, but the relay did not confirm it: " + st + "."));
   }
   function buildDrawer() {
     var wrap = document.getElementById("drawerWrap");
@@ -671,7 +797,8 @@ DASHBOARD_HTML = r"""<!doctype html>
       E("div", "ad-frow", null, tokenInput,
         E("button", "ad-btn", { type: "button", id: "adSaveToken" }, "Save")),
       E("p", "ad-hint", null, "Sent as ", E("code", null, null, "X-Admin-Token"),
-        " on every write. Stored only in this browser.")));
+        " on every write. Stored only in this browser."),
+      E("div", null, { id: "adTokenOut" })));
 
     /* mint */
     var roomSel = E("select", "ad-field", { id: "adRoom", "aria-label": "Room" });
@@ -766,7 +893,13 @@ DASHBOARD_HTML = r"""<!doctype html>
       headers: { "Content-Type": "application/json", "X-Admin-Token": S.token },
       body: JSON.stringify(body)
     }).then(function (r) {
-      if (!r.ok) { throw new Error(path + " failed: " + r.status); }
+      if (!r.ok) {
+        /* Carry the status on the error so a caller can tell a 401 from an outage
+           and explain the difference. Nothing here changes what the relay allows. */
+        var err = new Error(path + " failed: " + r.status);
+        err.status = r.status;
+        throw err;
+      }
       return r.json();
     });
   }
@@ -780,7 +913,8 @@ DASHBOARD_HTML = r"""<!doctype html>
           /* 401/403 is not an outage, it is a missing or stale admin token. Say so,
              otherwise an unauthenticated dashboard renders as a plausible empty room. */
           S.authError = r.status === 401 || r.status === 403;
-          S.conn = "error"; renderAll(); return;
+          S.conn = "error"; renderAll();
+          return { ok: false, status: r.status };
         }
         return r.json().then(function (j) {
           S.data = j;
@@ -792,12 +926,19 @@ DASHBOARD_HTML = r"""<!doctype html>
           if (rooms.length && rooms.indexOf(S.view.room) < 0) {
             S.view = { kind: "room", room: rooms[0], agent: null };
           }
+          clampSeen();
           markSeen();
           syncUrl();
           renderAll();
+          return { ok: true, status: r.status };
         });
       })
-      .catch(function () { S.authError = false; S.conn = "error"; renderAll(); });
+      /* Resolves to how the poll went, so Save can report it. Status 0 is "never
+         got an answer", which is a different story from "the token is wrong". */
+      .catch(function () {
+        S.authError = false; S.conn = "error"; renderAll();
+        return { ok: false, status: 0 };
+      });
   }
 
   /* ---------------------------------------------------------------- render */
@@ -975,11 +1116,13 @@ DASHBOARD_HTML = r"""<!doctype html>
         case "authOpenDrawer": {
           S.drawerOpen = true; renderDrawer();
           var tf = document.getElementById("adToken");
-          if (tf) { tf.focus(); }
+          /* Select as well as focus: the token that got us here is the wrong one,
+             so a paste should replace it rather than land next to it. */
+          if (tf) { tf.focus(); tf.select(); }
           break;
         }
         case "adClose": case "drawerScrim": S.drawerOpen = false; renderDrawer(); break;
-        case "recentToggle": S.recentOpen = !S.recentOpen; renderSidebar(); break;
+        case "invitedToggle": S.invitedOpen = !S.invitedOpen; renderSidebar(); break;
         case "backToRoom": S.view = { kind: "room", room: S.view.room, agent: null }; S.stick = true; renderAll(); break;
         case "toPill": S.menuOpen = !S.menuOpen; renderComposer(); break;
         case "expectsPill": {
@@ -993,8 +1136,24 @@ DASHBOARD_HTML = r"""<!doctype html>
         case "sendBtn": doSend(); break;
         case "asPill": startEditAs(); break;
         case "adSaveToken": {
-          var v = document.getElementById("adToken").value.trim();
-          S.token = v; localStorage.setItem(TOKEN_KEY, v); poll(); break;
+          var tokField = document.getElementById("adToken");
+          var v = tokField ? tokField.value.trim() : "";
+          S.token = v; localStorage.setItem(TOKEN_KEY, v);
+          /* Same store-then-poll as before. The poll's answer now reaches the user. */
+          S.tokenSave = "checking"; renderTokenNote();
+          poll().then(function (res) {
+            S.tokenSave = !v ? "empty"
+              : res && res.ok ? "ok"
+              : res && (res.status === 401 || res.status === 403) ? "rejected"
+              : res && res.status ? "the relay answered " + res.status
+              : "no answer from the relay";
+            /* A "you are locked out" note left over from before the token worked
+               contradicts the green box right above it. Retire it. */
+            var regenOut = document.getElementById("adRegenOut");
+            if (regenOut && S.tokenSave === "ok") { regenOut.textContent = ""; }
+            renderTokenNote();
+          });
+          break;
         }
         case "adCopyUrl": copyText((S.data && S.data.public_url) || "", "url"); break;
         case "adMint": doMint(); break;
@@ -1097,8 +1256,22 @@ DASHBOARD_HTML = r"""<!doctype html>
       btn.appendChild(document.createTextNode(" Regenerate admin token"));
       btn.className = "ad-btn danger";
       return poll();
-    }).catch(function () {
+    }).catch(function (e) {
       out.textContent = "";
+      /* Regenerating is itself an admin write, so a locked-out operator gets a
+         guaranteed 401 here and can never escape this way. "Regenerate failed."
+         reads as a broken button. Name the chicken and egg, and point at the
+         one place the current token can still be read. */
+      if (e && (e.status === 401 || e.status === 403)) {
+        out.appendChild(E("div", "ad-errorbox", { "data-testid": "regen-locked-out" },
+          E("div", null, null,
+            "Regenerating needs a currently valid admin token, and the relay answered 401 for the one in this browser. This button cannot get you back in."),
+          E("p", "ad-hint", null,
+            "Recover it on the machine running the relay: run ", E("code", null, null, "argybargy token"),
+            ", or read the ", E("code", null, null, "admin.token"),
+            " file in the relay's data directory. Paste that into the admin token field above and press Save.")));
+        return;
+      }
       out.appendChild(E("div", "ad-errorbox", null, "Regenerate failed."));
     });
   }
