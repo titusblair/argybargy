@@ -32,6 +32,8 @@ DASHBOARD_HTML = r"""<!doctype html>
 .sb-room__name{text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;overflow:hidden}.sb-room__meta{font-family:var(--mono);color:var(--faint);flex:none;font-size:10px;letter-spacing:.01em}.sb-room.active .sb-room__meta{color:var(--muted)}.sb-room.unread .sb-room__meta{color:var(--text)}.conv-header__count{font-family:var(--mono);color:var(--faint);white-space:nowrap;flex:none;font-size:11px}
 /* a 401 is not an empty relay: say so instead of rendering a blank room */
 .sb-authnote{color:var(--faint);padding:2px 16px 0;font-size:11px;line-height:1.5}.conv-empty__stack{place-items:center;max-width:44ch;display:grid}.conv-empty__cta{margin-top:14px}
+/* saving a token, and a regenerate you can never win, both have to say so */
+.ad-notebox{color:var(--muted);background:var(--raised);border:1px solid var(--border-strong);border-radius:9px;margin-top:10px;padding:10px 12px;font-size:12px;line-height:1.6}.ad-errorbox .ad-hint{color:color-mix(in srgb, var(--red) 60%, var(--faint));margin-top:6px}.ad-errorbox code,.ad-notebox code{font-family:var(--mono);font-size:11px}.conv-empty__where{color:var(--faint);text-align:center;margin-top:8px;font-size:11.5px;line-height:1.5}
 </style>
 </head>
 <body>
@@ -74,6 +76,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     data: null,               /* last /admin/state payload */
     conn: "idle",             /* idle | live | error */
     authError: false,         /* /admin/state answered 401/403: no token, or a stale one */
+    tokenSave: null,          /* what the last Save did: checking | ok | empty | rejected | a reason */
     view: { kind: "room", room: "", agent: null },
     agents: [],               /* reconciled presence */
     seen: {},                 /* room -> last_seq the operator has looked at */
@@ -639,8 +642,44 @@ DASHBOARD_HTML = r"""<!doctype html>
     if (!S.drawerOpen) { return; }
     if (!document.getElementById("adRoot")) { buildDrawer(); }
     renderKeys();
+    renderTokenNote();
     var u = document.getElementById("adUrl");
     if (u) { u.textContent = (S.data && S.data.public_url) || ""; }
+  }
+  /* Saving a token used to change nothing on screen either way, so a rejected
+     token was indistinguishable from a dead button. Report which one it was.
+     Only the outcome is ever drawn here. The token itself never is. */
+  function renderTokenNote() {
+    var out = document.getElementById("adTokenOut");
+    if (!out) { return; }
+    out.textContent = "";
+    var st = S.tokenSave;
+    if (!st) { return; }
+    if (st === "checking") {
+      out.appendChild(E("div", "ad-notebox", { "data-testid": "token-save-note" },
+        "Checking the token with the relay..."));
+      return;
+    }
+    if (st === "ok") {
+      out.appendChild(E("div", "ad-resultbox", { "data-testid": "token-save-note" },
+        "Token accepted. You are signed in, and rooms are loading."));
+      return;
+    }
+    if (st === "empty") {
+      out.appendChild(E("div", "ad-errorbox", { "data-testid": "token-save-note" },
+        "No token entered. Paste the admin token in the field above, then press Save."));
+      return;
+    }
+    if (st === "rejected") {
+      out.appendChild(E("div", "ad-errorbox", { "data-testid": "token-save-note" },
+        E("div", null, null,
+          "That token was rejected. The relay answered 401, so it is not the admin token this relay is running with."),
+        E("p", "ad-hint", null, "Print the current one with ", E("code", null, null, "argybargy token"),
+          " on the machine running the relay, then paste it here.")));
+      return;
+    }
+    out.appendChild(E("div", "ad-errorbox", { "data-testid": "token-save-note" },
+      "Saved, but the relay did not confirm it: " + st + "."));
   }
   function buildDrawer() {
     var wrap = document.getElementById("drawerWrap");
@@ -671,7 +710,8 @@ DASHBOARD_HTML = r"""<!doctype html>
       E("div", "ad-frow", null, tokenInput,
         E("button", "ad-btn", { type: "button", id: "adSaveToken" }, "Save")),
       E("p", "ad-hint", null, "Sent as ", E("code", null, null, "X-Admin-Token"),
-        " on every write. Stored only in this browser.")));
+        " on every write. Stored only in this browser."),
+      E("div", null, { id: "adTokenOut" })));
 
     /* mint */
     var roomSel = E("select", "ad-field", { id: "adRoom", "aria-label": "Room" });
@@ -766,7 +806,13 @@ DASHBOARD_HTML = r"""<!doctype html>
       headers: { "Content-Type": "application/json", "X-Admin-Token": S.token },
       body: JSON.stringify(body)
     }).then(function (r) {
-      if (!r.ok) { throw new Error(path + " failed: " + r.status); }
+      if (!r.ok) {
+        /* Carry the status on the error so a caller can tell a 401 from an outage
+           and explain the difference. Nothing here changes what the relay allows. */
+        var err = new Error(path + " failed: " + r.status);
+        err.status = r.status;
+        throw err;
+      }
       return r.json();
     });
   }
@@ -780,7 +826,8 @@ DASHBOARD_HTML = r"""<!doctype html>
           /* 401/403 is not an outage, it is a missing or stale admin token. Say so,
              otherwise an unauthenticated dashboard renders as a plausible empty room. */
           S.authError = r.status === 401 || r.status === 403;
-          S.conn = "error"; renderAll(); return;
+          S.conn = "error"; renderAll();
+          return { ok: false, status: r.status };
         }
         return r.json().then(function (j) {
           S.data = j;
@@ -795,9 +842,15 @@ DASHBOARD_HTML = r"""<!doctype html>
           markSeen();
           syncUrl();
           renderAll();
+          return { ok: true, status: r.status };
         });
       })
-      .catch(function () { S.authError = false; S.conn = "error"; renderAll(); });
+      /* Resolves to how the poll went, so Save can report it. Status 0 is "never
+         got an answer", which is a different story from "the token is wrong". */
+      .catch(function () {
+        S.authError = false; S.conn = "error"; renderAll();
+        return { ok: false, status: 0 };
+      });
   }
 
   /* ---------------------------------------------------------------- render */
@@ -993,8 +1046,24 @@ DASHBOARD_HTML = r"""<!doctype html>
         case "sendBtn": doSend(); break;
         case "asPill": startEditAs(); break;
         case "adSaveToken": {
-          var v = document.getElementById("adToken").value.trim();
-          S.token = v; localStorage.setItem(TOKEN_KEY, v); poll(); break;
+          var tokField = document.getElementById("adToken");
+          var v = tokField ? tokField.value.trim() : "";
+          S.token = v; localStorage.setItem(TOKEN_KEY, v);
+          /* Same store-then-poll as before. The poll's answer now reaches the user. */
+          S.tokenSave = "checking"; renderTokenNote();
+          poll().then(function (res) {
+            S.tokenSave = !v ? "empty"
+              : res && res.ok ? "ok"
+              : res && (res.status === 401 || res.status === 403) ? "rejected"
+              : res && res.status ? "the relay answered " + res.status
+              : "no answer from the relay";
+            /* A "you are locked out" note left over from before the token worked
+               contradicts the green box right above it. Retire it. */
+            var regenOut = document.getElementById("adRegenOut");
+            if (regenOut && S.tokenSave === "ok") { regenOut.textContent = ""; }
+            renderTokenNote();
+          });
+          break;
         }
         case "adCopyUrl": copyText((S.data && S.data.public_url) || "", "url"); break;
         case "adMint": doMint(); break;
