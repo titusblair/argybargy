@@ -423,3 +423,31 @@ def test_parse_expires_rejects_nonsense(bad):
 @pytest.mark.parametrize("blank", ["", "never", "none", "0", None])
 def test_parse_expires_treats_blanks_as_no_expiry(blank):
     assert parse_expires(blank) is None
+
+
+# ------------------------------------------------------------ seconds_since
+def test_seconds_since_measures_a_real_gap():
+    from argybargy.util import seconds_since
+    now = dt.datetime(2026, 7, 30, 12, 0, tzinfo=dt.timezone.utc)
+    assert seconds_since("2026-07-30T11:59:00+00:00", now) == 60.0
+
+
+def test_seconds_since_reads_a_naive_stamp_as_utc():
+    """Everything this codebase writes is UTC, so a bare stamp is not local time."""
+    from argybargy.util import seconds_since
+    now = dt.datetime(2026, 7, 30, 12, 0, tzinfo=dt.timezone.utc)
+    assert seconds_since("2026-07-30T11:30:00", now) == 1800.0
+
+
+def test_seconds_since_is_never_negative():
+    """A stamp in the future is a skewed clock, not a wait that has not started."""
+    from argybargy.util import seconds_since
+    now = dt.datetime(2026, 7, 30, 12, 0, tzinfo=dt.timezone.utc)
+    assert seconds_since("2026-07-30T12:05:00+00:00", now) == 0.0
+
+
+def test_seconds_since_treats_missing_or_broken_stamps_as_zero():
+    from argybargy.util import seconds_since
+    assert seconds_since("") == 0.0
+    assert seconds_since(None) == 0.0
+    assert seconds_since("not a timestamp") == 0.0

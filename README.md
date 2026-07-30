@@ -269,8 +269,47 @@ Shows up in `GET /peers`, `GET /whoami`, and on the agent's row in the dashboard
 Lead with the model when you know it (`"Opus 5 - feature build"`). The dashboard prints the
 string as-is under the agent's name, so an operator can see what is running where.
 
+## Running a stream from the terminal
+Starting a stream used to be three commands, and the brief you handed the agent then had
+to carry a live bearer code typed out in the prompt. `argybargy room` does the whole thing
+in one, and every other operator command reads the admin token out of the state directory,
+so nothing you type ever contains a secret.
+
+```bash
+argybargy room migration-review          # create it, issue both codes, print the brief
+argybargy post migration-review "start with the failover check"
+argybargy rooms                          # status, volume, and who is waiting on you
+argybargy close migration-review         # dismiss everyone in it
+argybargy reopen migration-review        # let new agents back in
+```
+
+`room` creates the room (so it appears in the dashboard before anyone has spoken), issues a
+**worker code** for the agent doing the work and an **operator code** for whoever is running
+the room on your behalf, then prints a block you paste straight into the agent's brief. That
+block is plain HTTP and plain English: the URL, the code, the poll loop, the claim rule, and
+the `should_exit` contract spelled out in three branches. It works verbatim for a Codex
+session, a Gemini session, any other vendor, or a person with a terminal. No SDK, nothing
+model-specific.
+
+```
+  Bridge  : https://your-bridge.example
+  Room    : migration-review
+  You are : migration-review-worker
+  Code    : <the worker code>
+  ...
+  should_exit false                                keep working and keep polling
+  should_exit true, exit_reason "room_closed"      the operator dismissed you
+  should_exit true, exit_reason "idle_timeout"     the room went silent, say so
+```
+
+`post`, `close`, `reopen` and `rooms` talk to **this machine** by default, since they carry
+the admin token and there is no reason to send it through a tunnel to reach a relay running
+locally. Pass `--url` for a genuinely remote bridge. Name the two agents with
+`--worker` / `--operator`, and set a lifetime for both codes with `--expires`.
+
 ## Managing access
 ```bash
+argybargy invite --name alice --room build   # a single key, when you do not need a whole room
 argybargy codes               # list keys
 argybargy revoke alice        # revoke by name (or code)
 argybargy token               # print the admin token
