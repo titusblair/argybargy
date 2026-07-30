@@ -83,12 +83,87 @@ def test_revoke_unknown_target_is_zero_not_error(client, admin_headers):
 # ------------------------------------------------------------------- state
 def test_admin_state_shape(client, admin_headers):
     body = client.get("/admin/state", headers=admin_headers).json()
-    for key in ("version", "public_url", "hash_codes", "peers", "codes", "messages", "rooms"):
+    for key in ("version", "public_url", "hash_codes", "peers", "roster", "codes", "messages", "rooms"):
         assert key in body, key
     assert body["version"] == VERSION
     assert isinstance(body["peers"], dict)
+    assert isinstance(body["roster"], dict)
     assert isinstance(body["codes"], list)
     assert isinstance(body["rooms"], list)
+
+
+# ------------------------------------------------------------------- roster
+@pytest.fixture
+def wipe_presence():
+    """Drop the relay's in-memory presence, the way a restart does, then put it back.
+
+    Presence is process state, so the only honest way to test "the roster survives a
+    restart" in-process is to empty it. Restored afterwards so test order is free.
+    """
+    from argybargy import app as appmod
+    kept = dict(appmod.hub._last_seen)
+    yield lambda: appmod.hub._last_seen.clear()
+    appmod.hub._last_seen.clear()
+    appmod.hub._last_seen.update(kept)
+
+
+def _roster_room(client, admin_headers, room):
+    body = client.get("/admin/state", headers=admin_headers).json()
+    return {r["name"]: r for r in body["roster"].get(room, [])}
+
+
+def test_roster_still_lists_an_agent_after_presence_is_wiped(client, admin_headers, make_code, wipe_presence):
+    """Titus's bug: the relay restarted, everyone had finished, the list went blank."""
+    room = "roster-restart"
+    _, auth = make_code("finished-worker", room=room)
+    client.get("/whoami", headers=auth)
+    client.post("/messages", headers=auth, json={"to": "all", "text": "did the work"})
+
+    wipe_presence()
+    rows = _roster_room(client, admin_headers, room)
+    assert "finished-worker" in rows, "an agent that posted must not vanish with presence"
+    row = rows["finished-worker"]
+    assert row["online"] is False
+    assert row["seconds_since_seen"] is None
+    assert row["last_message_seconds"] is not None
+    assert set(row["sources"]) == {"code", "messages"}
+
+
+def test_roster_lists_a_code_holder_that_never_connected(client, admin_headers, make_code):
+    room = "roster-invited"
+    make_code("never-showed", room=room)
+    rows = _roster_room(client, admin_headers, room)
+    assert rows["never-showed"]["sources"] == ["code"]
+    assert rows["never-showed"]["last_message_seconds"] is None
+
+
+def test_roster_lists_a_sender_that_holds_no_code(client, admin_headers):
+    """The operator posts through /admin/say and holds no code, but it is in the room."""
+    room = "roster-operator"
+    client.post("/admin/say", headers=admin_headers,
+                json={"room": room, "to": "all", "text": "hello", "sender": "operator"})
+    rows = _roster_room(client, admin_headers, room)
+    assert "messages" in rows["operator"]["sources"]
+
+
+def test_peers_endpoint_is_unchanged_and_stays_presence_only(client, admin_headers, make_code, wipe_presence):
+    """/peers answers "who is live in my room". The roster must not have redefined it."""
+    room = "roster-peers-contract"
+    _, live = make_code("live-one", room=room)
+    _, gone = make_code("gone-one", room=room)
+    client.post("/messages", headers=gone, json={"to": "all", "text": "then left"})
+
+    wipe_presence()
+    client.get("/whoami", headers=live)     # only this one is present again
+    body = client.get("/peers", headers=live).json()
+
+    assert set(body) == {"room", "peers"}
+    assert [p["name"] for p in body["peers"]] == ["live-one"], "/peers stays live-only"
+    assert set(body["peers"][0]) == {"name", "online", "seconds_since_seen", "capabilities"}
+    assert body["peers"][0]["online"] is True
+
+    rows = _roster_room(client, admin_headers, room)
+    assert sorted(rows) == ["gone-one", "live-one"], "the roster is the wider view, not /peers"
 
 
 def test_admin_state_filters_messages_to_one_room(client, admin_headers, make_code):

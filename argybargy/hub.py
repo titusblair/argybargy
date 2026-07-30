@@ -17,6 +17,56 @@ from .settings import settings
 ONLINE_WINDOW_SECONDS = settings.online_window
 
 
+def build_roster(peers_by_room: dict, code_rows: list, members_by_room: dict) -> dict:
+    """Who belongs to each room, from durable data, with presence attached as status.
+
+    Presence alone cannot answer this. ``Hub._last_seen`` is in-memory, so it empties
+    on restart, and a peer ages out of ``online`` after ONLINE_WINDOW_SECONDS anyway.
+    Membership is durable: an agent holds a code for the room, or it has posted into
+    the room, or both. Either fact outlives the process.
+
+    So the union is codes plus senders plus anyone live right now, and ``online`` is
+    only a flag on the row. It never decides whether the row exists. Pure function:
+    no clock, no I/O, so the caller supplies all three views and the tests can too.
+
+    Each row is ``{name, online, seconds_since_seen, last_message_seconds, sources}``.
+    ``seconds_since_seen`` is null when this process has never seen the agent connect,
+    and ``last_message_seconds`` is null when it has never posted here. ``sources``
+    lists which evidence put the row in the roster: presence, code, messages.
+    """
+    rooms = set(peers_by_room) | set(members_by_room) | {c.get("room", "") for c in code_rows}
+    rooms.discard("")
+
+    codes_by_room: dict = {}
+    for c in code_rows:
+        codes_by_room.setdefault(c.get("room", ""), {})[c.get("name", "")] = c.get("capabilities", "") or ""
+
+    out: dict = {}
+    for room in sorted(rooms):
+        live = {p["name"]: p for p in peers_by_room.get(room, [])}
+        posted = {m["name"]: m for m in members_by_room.get(room, [])}
+        invited = codes_by_room.get(room, {})
+        rows = []
+        for name in sorted(set(live) | set(posted) | set(invited)):
+            sources = []
+            if name in live:
+                sources.append("presence")
+            if name in invited:
+                sources.append("code")
+            if name in posted:
+                sources.append("messages")
+            rows.append({
+                "name": name,
+                "online": bool(live.get(name, {}).get("online", False)),
+                "seconds_since_seen": live[name]["seconds_since_seen"] if name in live else None,
+                "last_message_seconds": posted[name]["seconds_since_last"] if name in posted else None,
+                "capabilities": invited.get(name, ""),
+                "sources": sources,
+            })
+        out[room] = rows
+    return out
+
+
 class Hub:
     def __init__(self, store) -> None:
         self.store = store

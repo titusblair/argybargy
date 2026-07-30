@@ -59,6 +59,8 @@ DASHBOARD_HTML = r"""<!doctype html>
     ["opencode", /opencode/i]
   ];
   var PERSON_RE = /operator|human|\byou\b/i;
+  /* Sidebar sort order for a roster row: live first, then by how recently we heard it. */
+  var LIFE_ORDER = { online: 0, fading: 1, offline: 2, unseen: 3 };
 
   var TOKEN_KEY = "cc_admin";
   var THEME_KEY = "cc_theme";
@@ -83,7 +85,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     fetchedAt: Date.now(),    /* when the current payload landed, for age drift */
     now: Date.now(),
     stick: true,              /* timeline pinned to bottom */
-    recentOpen: false,
+    invitedOpen: false,
     navOpen: false,
     drawerOpen: false,
     menuOpen: false,
@@ -199,20 +201,32 @@ DASHBOARD_HTML = r"""<!doctype html>
     var total = Math.max(0, Math.floor((now - ms) / 1000));
     return Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
   }
+  /* `peers` is live presence, which is in-memory on the relay and so empties on a
+     restart. `roster` is the durable membership: code holders plus everyone who has
+     ever posted in the room, with presence folded in. Read the roster, and let
+     presence decide only the dot and the stamp. Fall back to peers so a dashboard
+     pointed at an older relay still draws something. */
   function reconcile(data) {
     var prev = {};
     S.agents.forEach(function (a) { prev[a.room + "/" + a.name] = a; });
+    var src = data.roster || data.peers || {};
     var out = [];
-    Object.keys(data.peers || {}).forEach(function (room) {
-      (data.peers[room] || []).forEach(function (p) {
+    Object.keys(src).forEach(function (room) {
+      (src[room] || []).forEach(function (p) {
         var was = prev[room + "/" + p.name];
+        /* Live presence first, then the age of its last message. Null on both means
+           invited and never heard from, which is a different thing from idle. */
+        var seconds = p.seconds_since_seen;
+        if (seconds === null || seconds === undefined) { seconds = p.last_message_seconds; }
+        var quiet = seconds === null || seconds === undefined;
         var life;
         if (p.online) { life = "online"; }
-        else { life = p.seconds_since_seen * 1000 >= FADE_MS ? "offline" : "fading"; }
+        else if (quiet) { life = "unseen"; }
+        else { life = seconds * 1000 >= FADE_MS ? "offline" : "fading"; }
         out.push({
-          name: p.name, room: room, online: p.online, life: life,
-          secondsSinceSeen: p.seconds_since_seen, hue: hueFor(p.name),
-          justJoined: p.online && !(was && was.online)
+          name: p.name, room: room, online: !!p.online, life: life, quiet: quiet,
+          secondsSinceSeen: quiet ? 0 : seconds, hue: hueFor(p.name),
+          justJoined: !!p.online && !(was && was.online)
         });
       });
     });
@@ -220,7 +234,7 @@ DASHBOARD_HTML = r"""<!doctype html>
   }
   /* One row per agent name, keeping the liveliest sighting across rooms. */
   function dedupe(views) {
-    var rank = { offline: 0, fading: 1, online: 2 };
+    var rank = { unseen: -1, offline: 0, fading: 1, online: 2 };
     var by = {};
     views.forEach(function (v) {
       var ex = by[v.name];
@@ -232,6 +246,7 @@ DASHBOARD_HTML = r"""<!doctype html>
         online: ex.online || v.online,
         justJoined: ex.justJoined || v.justJoined,
         life: better ? v.life : ex.life,
+        quiet: better ? !!v.quiet : !!ex.quiet,
         secondsSinceSeen: better ? v.secondsSinceSeen : ex.secondsSinceSeen
       };
     });
@@ -370,19 +385,24 @@ DASHBOARD_HTML = r"""<!doctype html>
   function renderSidebar() {
     var nav = document.getElementById("sbNav");
     if (!nav) { return; }
-    var roster = dedupe(S.agents);
+    /* The Agents list is the roster of the room in view: everyone who belongs here,
+       not everyone who happens to hold a socket open. Presence is the dot and the
+       stamp on each row, never the reason a row exists. */
+    var roster = dedupe(S.agents.filter(function (a) { return a.room === S.view.room; }));
     var key = roster.map(function (r) { return r.name + ":" + r.secondsSinceSeen + ":" + r.life; }).join("|");
     if (key !== S.baseline.key) { S.baseline = { now: S.now, key: key }; }
     var drift = Math.max(0, (S.now - S.baseline.now) / 1000);
     var shown = function (a) { return a.life === "online" ? 0 : a.secondsSinceSeen + drift; };
 
-    var visible = roster.filter(function (r) { return r.life !== "offline"; })
+    var visible = roster.filter(function (r) { return r.life !== "unseen"; })
       .sort(function (a, b) {
-        var ra = a.life === "online" ? 0 : 1, rb = b.life === "online" ? 0 : 1;
-        return ra - rb || a.name.localeCompare(b.name);
+        return (LIFE_ORDER[a.life] - LIFE_ORDER[b.life]) ||
+          (a.secondsSinceSeen - b.secondsSinceSeen) || a.name.localeCompare(b.name);
       });
-    var offline = roster.filter(function (r) { return r.life === "offline"; })
-      .sort(function (a, b) { return a.secondsSinceSeen - b.secondsSinceSeen; });
+    /* Holds a code for this room and has never spoken or connected. Real membership,
+       but nothing to report about it, so it folds away under its own heading. */
+    var unseen = roster.filter(function (r) { return r.life === "unseen"; })
+      .sort(function (a, b) { return a.name.localeCompare(b.name); });
     var onlineCount = roster.filter(function (r) { return r.life === "online"; }).length;
 
     var out = document.createDocumentFragment();
@@ -421,19 +441,22 @@ DASHBOARD_HTML = r"""<!doctype html>
     }
     out.appendChild(rl);
 
-    out.appendChild(E("div", "sb-label", null, "Agents ",
-      E("span", "sb-n", { text: "· " + onlineCount })));
+    out.appendChild(E("div", "sb-label", {
+      title: onlineCount + " of " + roster.length + " online in this room"
+    }, "Agents ",
+      E("span", "sb-n", { "data-testid": "agent-count", text: "· " + onlineCount + "/" + roster.length })));
     var al = E("div", null, { "data-testid": "agent-list" });
     visible.forEach(function (a) { al.appendChild(agentRow(a, shown(a), false)); });
     out.appendChild(al);
 
-    if (offline.length) {
-      out.appendChild(E("button", S.recentOpen ? "sb-recent-head open" : "sb-recent-head",
-        { type: "button", id: "recentToggle", "aria-expanded": S.recentOpen ? "true" : "false" },
-        icon("caretRight", 12, "sb-ph"), " Recently offline · " + offline.length));
-      if (S.recentOpen) {
-        var ol = E("div", null, { "data-testid": "recent-offline-list" });
-        offline.forEach(function (a) { ol.appendChild(agentRow(a, shown(a), true)); });
+    if (unseen.length) {
+      out.appendChild(E("button", S.invitedOpen ? "sb-recent-head open" : "sb-recent-head",
+        { type: "button", id: "invitedToggle", "aria-expanded": S.invitedOpen ? "true" : "false",
+          title: "Holds a code for this room, but has not connected or posted yet" },
+        icon("caretRight", 12, "sb-ph"), " Invited · " + unseen.length));
+      if (S.invitedOpen) {
+        var ol = E("div", null, { "data-testid": "invited-list" });
+        unseen.forEach(function (a) { ol.appendChild(agentRow(a, 0, true)); });
         out.appendChild(ol);
       }
     }
@@ -447,6 +470,12 @@ DASHBOARD_HTML = r"""<!doctype html>
         ? "relay reachable — /admin/state answering" : "connection: " + S.conn);
     }
   }
+  /* What the row says on its right-hand side: live, last heard from, or never yet. */
+  function agentStamp(a, seconds) {
+    if (a.life === "online") { return "online"; }
+    if (a.quiet) { return "invited"; }
+    return lastSeen(seconds) + " ago";
+  }
   function agentRow(a, seconds, recent) {
     var cls = [recent ? "sb-arow sb-recent-row" : "sb-arow"];
     if (!recent && a.life === "fading") { cls.push("fading"); }
@@ -454,7 +483,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     if (S.view.kind === "dm" && S.view.agent === a.name) { cls.push("active"); }
     var b = E("button", cls.join(" "), {
       type: "button", "data-agent": a.name,
-      "aria-label": a.name + " — " + (a.life === "online" ? "online" : lastSeen(seconds) + " ago") + ", open direct view"
+      "aria-label": a.name + " — " + agentStamp(a, seconds) + ", open direct view"
     });
     b.style.setProperty("--hue", a.hue);
     b.appendChild(avatar(a.name, "row", a.life === "online" ? "on" : "off"));
@@ -463,7 +492,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     if (brand) { nm.style.setProperty("--agent", brand); }
     b.appendChild(nm);
     b.appendChild(E("span", "sb-alast mono",
-      { "data-testid": "last-seen", text: a.life === "online" ? "online" : lastSeen(seconds) + " ago" }));
+      { "data-testid": "last-seen", text: agentStamp(a, seconds) }));
     return b;
   }
 
@@ -489,8 +518,12 @@ DASHBOARD_HTML = r"""<!doctype html>
         icon("arrowLeft", 16, "ph")));
       h.appendChild(avatar(who, "round-sm-dot" === "" ? "sm" : "sm", on ? "on" : "off"));
       h.appendChild(E("span", "conv-header__name", { "data-testid": "channel-title", text: who }));
+      /* A roster member with no sighting at all has no age to report, so say that
+         rather than printing "offline · now ago", which reads as a fresh drop-out. */
+      var quiet = !peer || peer.quiet;
       h.appendChild(E("span", "conv-header__meta mono",
-        { text: on ? "online · " + lastSeen(secs) : "offline · " + lastSeen(secs) + " ago" }));
+        { text: on ? "online · " + lastSeen(secs)
+                   : (quiet ? "invited · not seen yet" : "offline · " + lastSeen(secs) + " ago") }));
       h.appendChild(E("span", "conv-header__filterchip",
         { title: "Direct view = client-side filter over room messages" },
         icon("at", 11, "ph"), " filtered · #" + S.view.room));
@@ -1047,7 +1080,7 @@ DASHBOARD_HTML = r"""<!doctype html>
           break;
         }
         case "adClose": case "drawerScrim": S.drawerOpen = false; renderDrawer(); break;
-        case "recentToggle": S.recentOpen = !S.recentOpen; renderSidebar(); break;
+        case "invitedToggle": S.invitedOpen = !S.invitedOpen; renderSidebar(); break;
         case "backToRoom": S.view = { kind: "room", room: S.view.room, agent: null }; S.stick = true; renderAll(); break;
         case "toPill": S.menuOpen = !S.menuOpen; renderComposer(); break;
         case "expectsPill": {

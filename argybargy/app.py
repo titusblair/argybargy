@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from .audit import AuditLog
 from .auth import CodeStore, Peer
 from .dashboard import DASHBOARD_HTML
-from .hub import Hub
+from .hub import Hub, build_roster
 from .paths import ADMIN_TOKEN_PATH, DB_PATH, URL_PATH
 from .settings import settings
 from .store import MessageStore
@@ -298,13 +298,21 @@ async def admin_state(
 ) -> dict:
     """Dashboard snapshot. With ?room=<name>, 'messages' is that room's own tail
     instead of the last 60 across every room, so a quiet room is not crowded out
-    by a busy one. 'rooms' always carries the per-room counts and staleness."""
+    by a busy one. 'rooms' always carries the per-room counts and staleness.
+
+    'peers' is live presence only, and it empties on restart. 'roster' is the
+    durable membership the sidebar draws from: codes plus everyone who has posted,
+    with presence folded in as a status. The union is done here and not in the
+    browser because the dashboard only ever receives a 60-message tail, so it
+    cannot see an agent that posted early and then went quiet."""
+    codes = code_store.list()
     return {
         "version": VERSION,
         "public_url": _public_base(request),
         "hash_codes": settings.hash_codes,
         "peers": hub.all_peers(),
-        "codes": code_store.list(),
+        "roster": build_roster(hub.all_peers(), codes, message_store.members_by_room()),
+        "codes": codes,
         "room": room,
         "rooms": message_store.room_summaries(),
         "messages": message_store.recent_in_room(room, 60) if room else message_store.recent(60),

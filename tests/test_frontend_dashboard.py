@@ -619,3 +619,89 @@ def test_interactive_controls_have_accessible_names(dash):
 def test_active_room_is_marked_for_assistive_tech(dash, seeded):
     active = dash.locator(f'[data-room="{seeded["room"]}"]')
     assert active.get_attribute("aria-current") == "true"
+
+
+# ================================================= durable roster (bug: empty AGENTS)
+@pytest.fixture
+def drop_presence():
+    """Forget one room's in-memory presence, the way restarting the relay does.
+
+    Scoped to a single room and put back afterwards, so the rest of the session
+    keeps whatever it had seen.
+    """
+    from argybargy import app as appmod
+    dropped = {}
+
+    def _drop(room):
+        dropped[room] = appmod.hub._last_seen.pop(room, {})
+
+    yield _drop
+    for room, seen in dropped.items():
+        appmod.hub._last_seen[room] = seen
+
+
+@pytest.fixture
+def roster_room(client, admin_headers, drop_presence):
+    """A room whose agents have all finished, plus one that was never heard from."""
+    room = "rosterroom"
+    for name in ("roster-worker", "roster-invitee"):
+        client.post("/admin/invite", headers=admin_headers, json={"name": name, "room": room})
+    r = client.post("/admin/invite", headers=admin_headers, json={"name": "roster-worker-2", "room": room})
+    auth = {"Authorization": f"Bearer {r.json()['code']}"}
+    client.post("/messages", headers=auth, json={"to": "all", "text": "finished my part"})
+    drop_presence(room)
+    return room
+
+
+@pytest.fixture
+def roster_page(page, live_server, admin_headers, roster_room):
+    token = admin_headers["X-Admin-Token"]
+    page.add_init_script(f"localStorage.setItem('cc_admin', {token!r});")
+    page.goto(f"{live_server}/dashboard?room={roster_room}")
+    page.wait_for_selector('[data-testid="agent-list"] [data-agent]', timeout=15000)
+    return page
+
+
+def test_agents_list_is_not_empty_after_presence_is_lost(roster_page):
+    """The reported bug: relay restarted, every agent had finished, the list went blank."""
+    row = roster_page.locator('[data-testid="agent-list"] [data-agent="roster-worker-2"]')
+    assert row.count() == 1, "an agent that posted must stay in the room's agent list"
+    assert row.locator('[data-testid="last-seen"]').inner_text().strip() != "online"
+
+
+def test_agents_list_is_scoped_to_the_room_in_view(roster_page):
+    """Other rooms' agents must not be mixed into this room's roster."""
+    names = roster_page.locator('[data-testid="agent-list"] [data-agent]').evaluate_all(
+        "els => els.map(e => e.getAttribute('data-agent'))")
+    assert "roster-worker-2" in names
+    assert not [n for n in names if not n.startswith("roster-")], names
+
+
+def test_agent_count_reads_online_over_total(roster_page):
+    assert roster_page.locator('[data-testid="agent-count"]').inner_text().strip() == "· 0/3"
+
+
+def test_a_code_holder_that_never_spoke_folds_under_invited(roster_page):
+    toggle = roster_page.locator("#invitedToggle")
+    assert "Invited · 2" in toggle.inner_text()
+    assert roster_page.locator('[data-testid="invited-list"]').count() == 0
+    toggle.click()
+    row = roster_page.locator('[data-testid="invited-list"] [data-agent="roster-invitee"]')
+    assert row.count() == 1
+    assert row.locator('[data-testid="last-seen"]').inner_text().strip() == "invited"
+
+
+def test_online_still_means_connected_right_now(roster_page, client, roster_room, admin_headers):
+    """The roster widened who is listed. It must not have widened what online means."""
+    r = client.post("/admin/invite", headers=admin_headers,
+                    json={"name": "roster-live", "room": roster_room})
+    client.get("/whoami", headers={"Authorization": f"Bearer {r.json()['code']}"})
+    roster_page.wait_for_selector('[data-agent="roster-live"] [data-testid="last-seen"]', timeout=15000)
+    roster_page.wait_for_function(
+        "() => document.querySelector('[data-agent=\"roster-live\"] [data-testid=\"last-seen\"]')"
+        ".innerText.trim() === 'online'", timeout=15000)
+    stamps = roster_page.locator('[data-testid="agent-list"] [data-testid="last-seen"]').evaluate_all(
+        "els => els.map(e => e.innerText.trim())")
+    assert stamps.count("online") == 1, stamps
+
+
