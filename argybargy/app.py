@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from .audit import AuditLog
 from .auth import CodeStore, Peer
 from .dashboard import DASHBOARD_HTML
-from .hub import Hub, build_roster, resolve_expects
+from .hub import Hub, build_roster, open_questions, resolve_expects
 from .paths import ADMIN_TOKEN_PATH, DB_PATH, URL_PATH
 from .settings import settings
 from .store import MessageStore
@@ -379,7 +379,12 @@ async def admin_state(
     durable membership the sidebar draws from: codes plus everyone who has posted,
     with presence folded in as a status. The union is done here and not in the
     browser because the dashboard only ever receives a 60-message tail, so it
-    cannot see an agent that posted early and then went quiet."""
+    cannot see an agent that posted early and then went quiet.
+
+    'waiting' is every unanswered question across *all* rooms, longest wait first,
+    and it is scoped to all rooms on purpose even when ?room= scopes the messages:
+    the whole point is to surface an agent stuck in a room the operator is not
+    looking at. See hub.open_questions for what counts as answered."""
     codes = code_store.list()
     members = message_store.members_by_room()
     # Durable membership per room, for resolving "anyone" to a name. Built from what
@@ -387,6 +392,7 @@ async def admin_state(
     by_room = {r: {m["name"] for m in ms} for r, ms in members.items()}
     for c in codes:
         by_room.setdefault(c.get("room", ""), set()).add(c.get("name", ""))
+    statuses = message_store.room_statuses()
     raw = message_store.recent_in_room(room, 60) if room else message_store.recent(60)
     return {
         "version": VERSION,
@@ -397,7 +403,10 @@ async def admin_state(
         "codes": codes,
         "room": room,
         "rooms": message_store.room_summaries(),
-        "room_status": message_store.room_statuses(),
+        "room_status": statuses,
+        # 50 is a ceiling, not a page: a backlog past that is not a paging problem.
+        "waiting": open_questions(message_store.questions(), message_store.last_seq_by_sender(),
+                                  by_room, statuses, limit=50),
         "max_idle_seconds": settings.max_idle_seconds,
         "messages": [{**m, "expects_reply_resolved": resolve_expects(
             m.get("expects_reply", "none"), m.get("from", ""), by_room.get(m.get("room", ""), set()))}

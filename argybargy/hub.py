@@ -13,6 +13,7 @@ import asyncio
 import time
 
 from .settings import settings
+from .util import seconds_since
 
 ONLINE_WINDOW_SECONDS = settings.online_window
 
@@ -85,6 +86,64 @@ def resolve_expects(expects_reply: str, sender: str, members) -> str:
         return expects_reply
     others = sorted({m for m in members if m and m != sender})
     return others[0] if len(others) == 1 else "anyone"
+
+
+def open_questions(questions, last_seq_by_sender, members_by_room, room_statuses,
+                   now=None, limit=50, operators=("operator",)) -> list:
+    """Which agents asked a question and have not had an answer, longest wait first.
+
+    This exists because of a specific failure. Six agents posted a question on the
+    same day, waited, got nothing back because the operator was elsewhere, and each
+    decided alone. The information was in six rooms and nothing put it in front of a
+    human. Every question is already in the store; the only thing missing was one
+    list that says who is blocked and for how long.
+
+    **A question counts as answered when the party it addressed speaks again in that
+    room after it was asked.** Not a claim, not any traffic, not the asker's own
+    follow-up: a message from whoever was asked. A named ``expects_reply`` is
+    answered by that name; ``anyone`` is an open question, so any other participant
+    speaking after it closes it. That rule needs nothing new stored, it reads the
+    same message log everyone else reads, and it can never mark a question answered
+    by a message that came before it.
+
+    A claimed question stays on the list. A claim is a promise to answer, and an
+    agent that claimed and then went quiet is exactly the case worth seeing; the row
+    carries ``claimed_by`` so the operator can weigh it. A closed room is skipped
+    entirely: its agents were dismissed, so nobody there is still waiting.
+
+    ``operators`` names the humans. A question *asked by* a human is left out: this
+    list answers "who is waiting on me", and the operator is not waiting on
+    themselves. Rename the send-as identity in the composer and your own directed
+    messages start showing up here, which is a visible artifact rather than a hidden
+    rule, and still a real unanswered question.
+
+    Pure apart from the default clock, so the suite drives it with a fixed ``now``.
+    ``limit`` bounds the payload; the longest waits are the ones that survive it.
+    """
+    out = []
+    for q in questions:
+        room = q.get("room", "")
+        if (room_statuses.get(room) or {}).get("status") == "closed":
+            continue
+        asker = q.get("from", "")
+        if asker in operators:
+            continue
+        target = resolve_expects(q.get("expects_reply", "none") or "none", asker,
+                                 members_by_room.get(room) or set())
+        if target in ("", "none"):
+            continue
+        seq = int(q.get("seq", 0))
+        replies = last_seq_by_sender.get(room) or {}
+        if target == "anyone":
+            answered = any(s > seq for name, s in replies.items() if name != asker)
+        else:
+            answered = replies.get(target, 0) > seq
+        if answered:
+            continue
+        out.append({**q, "expects_reply_resolved": target,
+                    "waiting_seconds": seconds_since(q.get("ts", ""), now)})
+    out.sort(key=lambda r: (-r["waiting_seconds"], r["room"], r["seq"]))
+    return out[:limit] if limit else out
 
 
 class Hub:

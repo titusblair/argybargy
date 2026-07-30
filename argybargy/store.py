@@ -15,23 +15,11 @@ from pathlib import Path
 
 from .db import connect
 from .settings import settings
+from .util import seconds_since as _seconds_since
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-def _seconds_since(ts: str, now: datetime) -> float:
-    """Age of an ISO timestamp in seconds. Unparseable/absent reads as 0."""
-    if not ts:
-        return 0.0
-    try:
-        when = datetime.fromisoformat(ts)
-    except ValueError:
-        return 0.0
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
-    return round(max(0.0, (now - when).total_seconds()), 1)
 
 
 class MessageStore:
@@ -58,6 +46,13 @@ class MessageStore:
                 self._db.execute("ALTER TABLE messages ADD COLUMN expects_reply TEXT NOT NULL DEFAULT 'none'")
             if "claimed_by" not in cols:
                 self._db.execute("ALTER TABLE messages ADD COLUMN claimed_by TEXT")
+            # Partial index: almost every message expects nothing, so this only ever
+            # holds the questions. It is what makes the waiting list cheap to build.
+            # Created after the ALTER above, so an older database gets the column first.
+            self._db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_msg_asking ON messages(expects_reply) "
+                "WHERE expects_reply != 'none'"
+            )
             self._db.execute(
                 """CREATE TABLE IF NOT EXISTS rooms (
                     room TEXT PRIMARY KEY,
@@ -241,6 +236,38 @@ class MessageStore:
             )
         for members in out.values():
             members.sort(key=lambda m: m["name"])
+        return out
+
+    # ----- who is owed a reply -----
+
+    def questions(self) -> list:
+        """Every message that asked somebody to reply, oldest first, across all rooms.
+
+        Half of the waiting list. Deliberately returns questions rather than
+        *unanswered* questions: deciding what counts as an answer needs membership
+        and is a rule, not a query, so it lives in ``hub.open_questions`` where the
+        tests can drive it without a database. Served off idx_msg_asking.
+        """
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM messages WHERE expects_reply != 'none' ORDER BY id"
+            ).fetchall()
+        return [dict(room=r["room"], **self._to_msg(r)) for r in rows]
+
+    def last_seq_by_sender(self) -> dict:
+        """Per room, the highest seq each sender has reached: {room: {sender: seq}}.
+
+        The other half. "Has X replied to the question at seq N" is exactly
+        "is X's highest seq in this room greater than N", which is one grouped
+        query rather than a scan per question.
+        """
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT room, sender, MAX(seq) AS last_seq FROM messages GROUP BY room, sender"
+            ).fetchall()
+        out: dict = {}
+        for r in rows:
+            out.setdefault(r["room"], {})[r["sender"]] = int(r["last_seq"])
         return out
 
     def claim(self, room, seq, peer) -> dict:

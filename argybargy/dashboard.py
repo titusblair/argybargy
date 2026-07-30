@@ -38,6 +38,8 @@ DASHBOARD_HTML = r"""<!doctype html>
 .sb-room.closed{opacity:.62}.sb-room.closed .sb-room__name{text-decoration:line-through;text-decoration-color:var(--faint)}.sb-room.closed .sb-room__meta{color:var(--amber);letter-spacing:.06em;text-transform:uppercase;font-size:9px;font-weight:600}.sb-room.closed .sb-ph{color:var(--amber)}.conv-header__status{color:var(--green);background:var(--green-dim);border:1px solid color-mix(in srgb, var(--green) 34%, transparent);border-radius:999px;flex:none;text-transform:uppercase;letter-spacing:.09em;padding:2px 8px;font-size:9px;font-weight:600}.conv-header__status.is-closed{color:var(--amber);background:var(--amber-dim);border-color:color-mix(in srgb, var(--amber) 42%, transparent)}.conv-header__lifebtn{height:24px;color:var(--muted);border:1px solid var(--border-strong);background:0 0;border-radius:999px;flex:none;align-items:center;gap:5px;margin-left:auto;padding:0 10px;font-size:11px;font-weight:500;display:inline-flex}.conv-header__lifebtn:hover{color:var(--red);border-color:color-mix(in srgb, var(--red) 40%, transparent);background:var(--red-dim)}.conv-header__lifebtn.confirm{color:#fff;background:var(--red);border-color:#0000}.conv-header__lifebtn.reopen:hover{color:var(--green);border-color:color-mix(in srgb, var(--green) 40%, transparent);background:var(--green-dim)}
 /* the model an agent is running belongs on its roster row, not only in the drawer */
 .sb-astack{flex:1;min-width:0}.sb-acaps{text-overflow:ellipsis;white-space:nowrap;color:var(--faint);font-size:10.5px;line-height:1.25;display:block;overflow:hidden}.sb-arow.has-caps{max-height:52px}.sb-arow.has-caps .sb-aname{line-height:1.3;display:block}@media (width<=640px){.conv-header__lifebtn{padding:0 8px}.conv-header__status{display:none}}
+/* who is blocked on a human, and for how long: the top of the sidebar, not a tooltip */
+.sb-label--wait{color:var(--amber)}.sb-wrow{--dotring:var(--rail);width:calc(100% - 12px);text-align:left;color:var(--text);background:var(--amber-dim);border:1px solid color-mix(in srgb, var(--amber) 26%, transparent);border-radius:8px;align-items:flex-start;gap:9px;margin:0 6px 4px;padding:7px 9px;display:flex}.sb-wrow:hover{border-color:color-mix(in srgb, var(--amber) 55%, transparent)}.sb-wrow.loud{background:var(--red-dim);border-color:color-mix(in srgb, var(--red) 50%, transparent)}.sb-wrow.loud:hover{border-color:var(--red)}.sb-wstack{flex:1;min-width:0}.sb-wtop{align-items:baseline;gap:6px;min-width:0;display:flex}.sb-wname{text-overflow:ellipsis;white-space:nowrap;color:var(--text);flex:none;max-width:60%;font-size:12.5px;font-weight:600;overflow:hidden}.sb-wroom{text-overflow:ellipsis;white-space:nowrap;color:var(--faint);font-size:10px;overflow:hidden}.sb-wtext{text-overflow:ellipsis;white-space:nowrap;color:var(--muted);margin-top:1px;font-size:11.5px;line-height:1.35;overflow:hidden}.sb-wtimer{color:var(--amber);flex:none;font-size:11px;font-weight:600}.sb-wrow.loud .sb-wtimer{color:var(--red)}
 </style>
 </head>
 <body>
@@ -72,6 +74,10 @@ DASHBOARD_HTML = r"""<!doctype html>
   var CLOSED_KEY = "cc_showclosed";
   var POLL_MS = 3000;
   var FADE_MS = 8000;
+  /* How long an agent may be owed a reply before the row stops being informational
+     and starts being a problem. Five minutes: long enough that a busy operator is
+     not shouted at over nothing, short enough that nobody decides alone. */
+  var WAIT_LOUD_SECONDS = 300;
   var BOTTOM_SLOP_PX = 32;
   var EXPIRY_OPTIONS = [
     ["never", "never"], ["10m", "10 minutes"], ["30m", "30 minutes"],
@@ -473,6 +479,65 @@ DASHBOARD_HTML = r"""<!doctype html>
     return null;
   }
 
+  /* ----------------------------------------------------------------- inbox */
+  /* The relay works out who is owed a reply (hub.open_questions); this only
+     re-times it. The wait drifts forward between polls so the timer ticks once a
+     second instead of freezing for three at a stretch. */
+  function waitingRows() {
+    var drift = Math.max(0, (S.now - S.fetchedAt) / 1000);
+    return ((S.data && S.data.waiting) || []).map(function (w) {
+      return {
+        room: w.room, seq: w.seq, from: w.from, text: w.text || "",
+        target: w.expects_reply_resolved || w.expects_reply || "anyone",
+        claimedBy: w.claimed_by || "",
+        seconds: (w.waiting_seconds || 0) + drift
+      };
+    });
+  }
+  /* One row per unanswered question, above the room list, because "who is blocked
+     on me" outranks "which rooms exist". Six agents asked something on the same day,
+     waited, heard nothing and decided alone; the answers were in six rooms and no
+     screen ever showed them together. Nothing waiting renders nothing at all: an
+     empty box in this slot would train the operator to stop looking at the slot. */
+  function renderInbox(out) {
+    var rows = waitingRows();
+    if (!rows.length) { return; }
+    var loudCount = rows.filter(function (w) { return w.seconds >= WAIT_LOUD_SECONDS; }).length;
+    out.appendChild(E("div", "sb-label sb-label--wait", {
+      "data-testid": "waiting-label",
+      title: rows.length + " unanswered question" + (rows.length === 1 ? "" : "s") +
+             (loudCount ? ", " + loudCount + " waiting over " + Math.round(WAIT_LOUD_SECONDS / 60) + " minutes" : "")
+    }, "Waiting on you ",
+      E("span", "sb-n", { "data-testid": "waiting-count", text: "· " + rows.length })));
+    var wl = E("div", null, { "data-testid": "waiting-list" });
+    rows.forEach(function (w) {
+      var loud = w.seconds >= WAIT_LOUD_SECONDS;
+      var stamp = lastSeen(w.seconds);
+      wl.appendChild(E("button", "sb-wrow" + (loud ? " loud" : ""), {
+        type: "button", "data-testid": "waiting-row",
+        /* data-goto-room, not data-room: a sidebar room row is addressed as
+           [data-room="x"] all over this page and the suite, and a second element
+           answering to that name would make every one of those ambiguous. Same
+           handler, different key. data-focus asks it to land in the composer,
+           because the next thing the operator does here is answer. */
+        "data-goto-room": w.room, "data-focus": "composer",
+        "data-seq": String(w.seq), "data-loud": loud ? "true" : "false",
+        title: w.from + " in #" + w.room + " asked: " + w.text +
+               (w.claimedBy ? "  (claimed by " + w.claimedBy + ", still unanswered)" : ""),
+        "aria-label": w.from + " has been waiting " + stamp + " for a reply in room " +
+                      w.room + ". Open it."
+      },
+        avatar(w.from, "row", null),
+        E("div", "sb-wstack", null,
+          E("div", "sb-wtop", null,
+            E("span", "sb-wname", { text: w.from }),
+            E("span", "sb-wroom mono", { text: "#" + w.room })),
+          E("div", "sb-wtext", { "data-testid": "waiting-text", text: w.text })),
+        E("span", "sb-wtimer mono", { "data-testid": "waiting-timer", text: stamp })));
+    });
+    out.appendChild(wl);
+  }
+
   /* --------------------------------------------------------------- sidebar */
   function renderSidebar() {
     var nav = document.getElementById("sbNav");
@@ -498,6 +563,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     var onlineCount = roster.filter(function (r) { return r.life === "online"; }).length;
 
     var out = document.createDocumentFragment();
+    renderInbox(out);
     out.appendChild(E("div", "sb-label", null, "Rooms"));
     var rl = E("div", null, { "data-testid": "room-list" });
     var sums = roomSummaries();
@@ -1197,10 +1263,19 @@ DASHBOARD_HTML = r"""<!doctype html>
       if (!t) { return; }
       var id = t.id;
 
-      if (t.hasAttribute("data-room")) {
-        openRoom(t.getAttribute("data-room"));
+      if (t.hasAttribute("data-room") || t.hasAttribute("data-goto-room")) {
+        /* Read before the re-render: renderAll() replaces the row that was clicked. */
+        var wantsComposer = t.getAttribute("data-focus") === "composer";
+        openRoom(t.getAttribute("data-goto-room") || t.getAttribute("data-room"));
         S.navOpen = false;
         renderAll();
+        /* Arriving from the waiting list, the next thing to do is answer. The
+           composer input is built once in shell() and never replaced, so it is
+           still the same element after the re-render. */
+        if (wantsComposer) {
+          var ci = document.getElementById("composerInput");
+          if (ci) { ci.focus(); }
+        }
         poll();               /* pull this room's tail now, not in 3 seconds */
         return;
       }
@@ -1402,7 +1477,8 @@ DASHBOARD_HTML = r"""<!doctype html>
   window.__argy = {
     hueFor: hueFor, glyphFor: glyphFor, brandAccent: brandAccent,
     lastSeen: lastSeen, elapsedSince: elapsedSince, dedupe: dedupe,
-    roomStatus: roomStatus, isClosed: isClosed, partitionRooms: partitionRooms
+    roomStatus: roomStatus, isClosed: isClosed, partitionRooms: partitionRooms,
+    waitingRows: waitingRows
   };
 
   /* ------------------------------------------------------------------ boot */

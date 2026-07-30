@@ -5,6 +5,26 @@ import re
 from datetime import datetime, timedelta, timezone
 
 
+def seconds_since(ts, now=None) -> float:
+    """Age of an ISO timestamp in seconds. Absent or unparseable reads as 0.
+
+    Lives here because two callers need it now: the store, for how long a room has
+    been quiet, and the waiting list, for how long an agent has been owed a reply.
+    A naive timestamp is read as UTC, which is what this codebase writes. Never
+    negative, so a clock that skews backwards reads as "just now" rather than as a
+    wait in the future.
+    """
+    if not ts:
+        return 0.0
+    try:
+        when = datetime.fromisoformat(ts)
+    except ValueError:
+        return 0.0
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return round(max(0.0, ((now or datetime.now(timezone.utc)) - when).total_seconds()), 1)
+
+
 def poll_budget(waited_seconds, room_quiet_seconds, max_idle_seconds: int, closed: bool) -> dict:
     """The safety valve, as one small pure function.
 

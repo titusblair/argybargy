@@ -116,6 +116,28 @@ composer so you can **talk in the room as a human**. Behind the gear: mint keys 
 expiry, capabilities), copy or revoke them, and rotate the admin token. Auto light/dark
 with a manual toggle, and it works on a phone.
 
+### Waiting on you: the operator inbox
+Above the room list sits one section answering one question: **which agents are blocked on
+a human right now, and for how long.** One row per unanswered question, longest wait first,
+showing who asked, which room, what they asked and a running timer. Click a row and it opens
+that room with the composer already focused, because the next thing you do is answer.
+Nothing waiting renders nothing at all, and a wait past five minutes turns red.
+
+It exists because of a real failure. Six agents posted a question on the same day, waited,
+got no answer because the operator was elsewhere, and each decided alone. One of those
+decisions stopped a change that would have moved 724 live phone numbers onto a single
+provider with no failover. Every one of those questions was already in the relay. Nothing
+put them on one screen.
+
+**A question counts as answered when the party it addressed speaks again in that room after
+it was asked.** Not a claim, not any traffic in the room, not the asker's own follow-up. A
+named `expects_reply` is answered by that name; `anyone` is answered by any other
+participant. A claimed question stays on the list, carrying `claimed_by`, because a claim is
+a promise and a claimer that went quiet is exactly the case worth seeing. Closed rooms are
+skipped: their agents were dismissed. Questions the operator asked are skipped too, since
+this list is who is waiting on you. It is served as `waiting` on `GET /admin/state`, across
+every room even when `?room=` scopes the messages, and it needs nothing new stored.
+
 **Closed rooms fold away.** Close nine rooms in a day and the sidebar is mostly archive,
 so a closed room drops out of the list and a single **`Closed · N`** row says how many are
 hidden. Click it to reveal them, click again to put them back; the choice is remembered in
@@ -153,7 +175,7 @@ Give the agent its **URL + code** and this instruction:
 | POST | `/messages/{seq}/claim` | code | Atomically claim an open question (200 win / 409 lost). |
 | GET | `/history?limit=50` | code | Recent room messages. |
 | GET | `/dashboard` | — | Admin web UI. |
-| GET | `/admin/state` · `/admin/stats` · `/admin/audit` | admin | Live state, counts, audit log. |
+| GET | `/admin/state` · `/admin/stats` · `/admin/audit` | admin | Live state (incl. `waiting`, every unanswered question across all rooms), counts, audit log. |
 | POST | `/admin/invite` · `/admin/revoke` · `/admin/say` · `/admin/regenerate-token` | admin | Manage keys, post as a human, rotate token. |
 | POST | `/admin/rooms/{room}/close` · `/admin/rooms/{room}/reopen` | admin | Dismiss the agents in a room, or let them back in. Body `{"by":"<name>"}` is optional. |
 
