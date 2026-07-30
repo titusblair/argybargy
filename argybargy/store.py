@@ -17,6 +17,19 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _seconds_since(ts: str, now: datetime) -> float:
+    """Age of an ISO timestamp in seconds. Unparseable/absent reads as 0."""
+    if not ts:
+        return 0.0
+    try:
+        when = datetime.fromisoformat(ts)
+    except ValueError:
+        return 0.0
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return round(max(0.0, (now - when).total_seconds()), 1)
+
+
 class MessageStore:
     def __init__(self, path: Path) -> None:
         self._lock = threading.Lock()
@@ -95,6 +108,37 @@ class MessageStore:
                 "SELECT * FROM (SELECT * FROM messages ORDER BY id DESC LIMIT ?) ORDER BY id", (limit,)
             ).fetchall()
         return [dict(room=r["room"], **self._to_msg(r)) for r in rows]
+
+    def recent_in_room(self, room, limit) -> list:
+        """Newest `limit` messages in one room, oldest first. This is the per-room feed.
+
+        Same shape as ``recent`` (each row carries its room), so a caller can swap
+        one for the other. Served straight off idx_msg_room_seq(room, seq).
+        """
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM (SELECT * FROM messages WHERE room=? ORDER BY seq DESC LIMIT ?) ORDER BY seq",
+                (room, limit),
+            ).fetchall()
+        return [dict(room=r["room"], **self._to_msg(r)) for r in rows]
+
+    def room_summaries(self) -> list:
+        """One row per room that has messages: volume + how long it has been quiet.
+
+        Busiest-most-recent first. The GROUP BY rides the existing
+        idx_msg_room_seq(room, seq) index, so no extra index is needed.
+        """
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT room, COUNT(*) AS n, MAX(seq) AS last_seq, MAX(ts) AS last_ts "
+                "FROM messages GROUP BY room"
+            ).fetchall()
+        now = datetime.now(timezone.utc)
+        out = [{"room": r["room"], "messages": int(r["n"]), "last_seq": int(r["last_seq"]),
+                "last_ts": r["last_ts"], "seconds_since_last": _seconds_since(r["last_ts"], now)}
+               for r in rows]
+        out.sort(key=lambda s: (s["seconds_since_last"], s["room"]))
+        return out
 
     def claim(self, room, seq, peer) -> dict:
         """Atomically assign the responder for a message. First caller wins."""
