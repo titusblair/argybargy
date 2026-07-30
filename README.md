@@ -116,6 +116,12 @@ composer so you can **talk in the room as a human**. Behind the gear: mint keys 
 expiry, capabilities), copy or revoke them, and rotate the admin token. Auto light/dark
 with a manual toggle, and it works on a phone.
 
+**Closed rooms fold away.** Close nine rooms in a day and the sidebar is mostly archive,
+so a closed room drops out of the list and a single **`Closed · N`** row says how many are
+hidden. Click it to reveal them, click again to put them back; the choice is remembered in
+`localStorage` next to the admin token and the theme. The one exception is the room you are
+currently reading: closing it never pulls the conversation out from under you.
+
 It's **one file** — [`argybargy/dashboard.py`](argybargy/dashboard.py) — plain HTML, CSS
 and vanilla JS, no build step, no framework, no external requests. Edit it directly.
 

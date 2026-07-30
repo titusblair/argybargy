@@ -69,6 +69,7 @@ DASHBOARD_HTML = r"""<!doctype html>
   var TOKEN_KEY = "cc_admin";
   var THEME_KEY = "cc_theme";
   var SEEN_KEY = "cc_seen";
+  var CLOSED_KEY = "cc_showclosed";
   var POLL_MS = 3000;
   var FADE_MS = 8000;
   var BOTTOM_SLOP_PX = 32;
@@ -100,6 +101,23 @@ DASHBOARD_HTML = r"""<!doctype html>
       /* quota or a locked-down profile: unread degrades to session-only, nothing else breaks */
     }
   }
+  /* Whether closed rooms are revealed. Persisted next to the token and the theme,
+     because a preference that resets on refresh is not a preference. */
+  function loadShowClosed() {
+    try {
+      return localStorage.getItem(CLOSED_KEY) === "1";
+    } catch (e) {
+      return false;
+    }
+  }
+  function setShowClosed(on) {
+    S.showClosed = !!on;
+    try {
+      localStorage.setItem(CLOSED_KEY, S.showClosed ? "1" : "0");
+    } catch (e) {
+      /* same degradation as unread: the toggle still works for this session */
+    }
+  }
 
   /* ---------------------------------------------------------------- state */
   var S = {
@@ -111,6 +129,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     view: { kind: "room", room: "", agent: null },
     agents: [],               /* reconciled presence */
     seen: loadSeen(),         /* room -> last_seq the operator has looked at, persisted */
+    showClosed: loadShowClosed(),  /* reveal closed rooms in the sidebar, persisted */
     fetchedAt: Date.now(),    /* when the current payload landed, for age drift */
     now: Date.now(),
     stick: true,              /* timeline pinned to bottom */
@@ -320,6 +339,20 @@ DASHBOARD_HTML = r"""<!doctype html>
       return a.localeCompare(b);
     });
   }
+  /* Split the room list into what the sidebar draws and what it folds away.
+     Nine rooms closed in one day turns the list into an archive nobody reads, so
+     closed rooms hide by default and the count of them sits behind one toggle.
+     The room being read is never folded away under the reader, even once it
+     closes: the conversation stays where they left it. Pure, so the suite can
+     drive every case without a browser. */
+  function partitionRooms(rooms, shut, showClosed, current) {
+    var shown = [], hidden = [];
+    (rooms || []).forEach(function (r) {
+      if (showClosed || r === current || !shut(r)) { shown.push(r); }
+      else { hidden.push(r); }
+    });
+    return { shown: shown, hidden: hidden };
+  }
   /* The room in view is, by definition, read. */
   function markSeen() {
     var s = roomSummaries()[S.view.room];
@@ -468,7 +501,8 @@ DASHBOARD_HTML = r"""<!doctype html>
     out.appendChild(E("div", "sb-label", null, "Rooms"));
     var rl = E("div", null, { "data-testid": "room-list" });
     var sums = roomSummaries();
-    roomList().forEach(function (r) {
+    var part = partitionRooms(roomList(), isClosed, S.showClosed, S.view.room);
+    part.shown.forEach(function (r) {
       var active = S.view.kind === "room" && S.view.room === r;
       var s = sums[r];
       /* A direct view is still a filter over that room, so it counts as watching it. */
@@ -493,6 +527,24 @@ DASHBOARD_HTML = r"""<!doctype html>
           text: shut ? "closed" : (s ? count + " · " + age : "quiet") }),
         unread ? E("span", "sb-udot", { "data-testid": "room-unread" }) : null));
     });
+    /* The way back to the closed ones. It says how many are hidden rather than
+       just "show closed", so the list never quietly loses a room you are looking
+       for. With nothing hidden and nothing revealed there is no control at all. */
+    if (part.hidden.length || S.showClosed) {
+      var shownClosed = part.shown.filter(isClosed).length;
+      rl.appendChild(E("button", S.showClosed ? "sb-recent-head open" : "sb-recent-head", {
+        type: "button", id: "closedToggle", "data-testid": "closed-toggle",
+        "data-hidden": String(part.hidden.length),
+        "aria-expanded": S.showClosed ? "true" : "false",
+        title: S.showClosed
+          ? "Hide closed rooms again"
+          : part.hidden.length + " closed room" + (part.hidden.length === 1 ? "" : "s") +
+            " hidden. Click to show them."
+      }, icon("caretRight", 12, "sb-ph"),
+        S.showClosed
+          ? " Hide closed · " + (shownClosed + part.hidden.length)
+          : " Closed · " + part.hidden.length));
+    }
     if (S.authError) {
       rl.appendChild(E("div", "sb-authnote", { "data-testid": "sidebar-auth-note" },
         "Hidden until the admin token is set."));
@@ -1191,6 +1243,7 @@ DASHBOARD_HTML = r"""<!doctype html>
         }
         case "adClose": case "drawerScrim": S.drawerOpen = false; renderDrawer(); break;
         case "invitedToggle": S.invitedOpen = !S.invitedOpen; renderSidebar(); break;
+        case "closedToggle": setShowClosed(!S.showClosed); renderSidebar(); break;
         case "backToRoom": S.view = { kind: "room", room: S.view.room, agent: null }; S.stick = true; renderAll(); break;
         case "toPill": S.menuOpen = !S.menuOpen; renderComposer(); break;
         case "expectsPill": {
@@ -1349,7 +1402,7 @@ DASHBOARD_HTML = r"""<!doctype html>
   window.__argy = {
     hueFor: hueFor, glyphFor: glyphFor, brandAccent: brandAccent,
     lastSeen: lastSeen, elapsedSince: elapsedSince, dedupe: dedupe,
-    roomStatus: roomStatus, isClosed: isClosed
+    roomStatus: roomStatus, isClosed: isClosed, partitionRooms: partitionRooms
   };
 
   /* ------------------------------------------------------------------ boot */
