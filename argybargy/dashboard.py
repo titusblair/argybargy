@@ -40,6 +40,8 @@ DASHBOARD_HTML = r"""<!doctype html>
 .sb-astack{flex:1;min-width:0}.sb-acaps{text-overflow:ellipsis;white-space:nowrap;color:var(--faint);font-size:10.5px;line-height:1.25;display:block;overflow:hidden}.sb-arow.has-caps{max-height:52px}.sb-arow.has-caps .sb-aname{line-height:1.3;display:block}@media (width<=640px){.conv-header__lifebtn{padding:0 8px}.conv-header__status{display:none}}
 /* who is blocked on a human, and for how long: the top of the sidebar, not a tooltip */
 .sb-label--wait{color:var(--amber)}.sb-wrow{--dotring:var(--rail);width:calc(100% - 12px);text-align:left;color:var(--text);background:var(--amber-dim);border:1px solid color-mix(in srgb, var(--amber) 26%, transparent);border-radius:8px;align-items:flex-start;gap:9px;margin:0 6px 4px;padding:7px 9px;display:flex}.sb-wrow:hover{border-color:color-mix(in srgb, var(--amber) 55%, transparent)}.sb-wrow.loud{background:var(--red-dim);border-color:color-mix(in srgb, var(--red) 50%, transparent)}.sb-wrow.loud:hover{border-color:var(--red)}.sb-wstack{flex:1;min-width:0}.sb-wtop{align-items:baseline;gap:6px;min-width:0;display:flex}.sb-wname{text-overflow:ellipsis;white-space:nowrap;color:var(--text);flex:none;max-width:60%;font-size:12.5px;font-weight:600;overflow:hidden}.sb-wroom{text-overflow:ellipsis;white-space:nowrap;color:var(--faint);font-size:10px;overflow:hidden}.sb-wtext{text-overflow:ellipsis;white-space:nowrap;color:var(--muted);margin-top:1px;font-size:11.5px;line-height:1.35;overflow:hidden}.sb-wtimer{color:var(--amber);flex:none;font-size:11px;font-weight:600}.sb-wrow.loud .sb-wtimer{color:var(--red)}
+/* what each agent is doing, on the model line so it never squeezes the name */
+.sb-ameta{align-items:center;gap:5px;min-width:0;line-height:1.25;display:flex}.sb-ameta .sb-acaps{flex:1;min-width:0}.sb-astate{text-transform:uppercase;letter-spacing:.07em;white-space:nowrap;border:1px solid;border-radius:999px;flex:none;padding:1px 5px;font-size:8px;font-weight:600}.sb-astate--working{color:var(--green);background:var(--green-dim);border-color:color-mix(in srgb, var(--green) 34%, transparent)}.sb-astate--waiting{color:var(--amber);background:var(--amber-dim);border-color:color-mix(in srgb, var(--amber) 42%, transparent)}.sb-astate--standing{color:var(--faint);background:0 0;border-color:var(--border-strong)}
 </style>
 </head>
 <body>
@@ -78,6 +80,10 @@ DASHBOARD_HTML = r"""<!doctype html>
      and starts being a problem. Five minutes: long enough that a busy operator is
      not shouted at over nothing, short enough that nobody decides alone. */
   var WAIT_LOUD_SECONDS = 300;
+  /* How recently an agent must have posted to read as working rather than as
+     sitting there. Two minutes: longer than any normal gap between posts, shorter
+     than the "check in every few minutes" every brief asks for. */
+  var WORKING_SECONDS = 120;
   var BOTTOM_SLOP_PX = 32;
   var EXPIRY_OPTIONS = [
     ["never", "never"], ["10m", "10 minutes"], ["30m", "30 minutes"],
@@ -282,6 +288,10 @@ DASHBOARD_HTML = r"""<!doctype html>
           name: p.name, room: room, online: !!p.online, life: life, quiet: quiet,
           secondsSinceSeen: quiet ? 0 : seconds, hue: hueFor(p.name),
           capabilities: p.capabilities || "",
+          /* Kept separate from secondsSinceSeen, which folds presence and posting
+             into one number. "Is it working" is about posting only: an agent can
+             hold a poll open for an hour without doing anything. */
+          lastMessageSeconds: p.last_message_seconds,
           justJoined: !!p.online && !(was && was.online)
         });
       });
@@ -304,7 +314,8 @@ DASHBOARD_HTML = r"""<!doctype html>
         justJoined: ex.justJoined || v.justJoined,
         life: better ? v.life : ex.life,
         quiet: better ? !!v.quiet : !!ex.quiet,
-        secondsSinceSeen: better ? v.secondsSinceSeen : ex.secondsSinceSeen
+        secondsSinceSeen: better ? v.secondsSinceSeen : ex.secondsSinceSeen,
+        lastMessageSeconds: better ? v.lastMessageSeconds : ex.lastMessageSeconds
       };
     });
     return Object.keys(by).map(function (k) { return by[k]; });
@@ -538,6 +549,38 @@ DASHBOARD_HTML = r"""<!doctype html>
     out.appendChild(wl);
   }
 
+  /* Everyone with an unanswered question in the room in view, as a lookup. */
+  function waitingNamesHere() {
+    var by = {};
+    ((S.data && S.data.waiting) || []).forEach(function (w) {
+      if (w.room === S.view.room) { by[w.from] = true; }
+    });
+    return by;
+  }
+  /* What an agent is doing, derived from what the relay already reports. Nothing
+     new is stored and nothing is guessed from message text:
+
+       waiting   it has a question nobody has answered, so it is stuck on a human
+       working   it posted inside the last WORKING_SECONDS
+       standing  live and polling, nothing outstanding, nothing recent to say:
+                 the "finished my chunk, waiting to be dismissed" state
+
+     Offline and invited are left alone: the row's timestamp already says that, and
+     an agent nobody has heard from is not in a state worth naming. Pure. */
+  function agentState(a, waiting) {
+    if ((waiting || {})[a.name]) { return "waiting"; }
+    if (a.life === "unseen" || !a.online) { return ""; }
+    var since = a.lastMessageSeconds;
+    if (since === null || since === undefined) { return "standing"; }
+    return since < WORKING_SECONDS ? "working" : "standing";
+  }
+  var STATE_LABEL = { waiting: "waiting", working: "working", standing: "standing by" };
+  var STATE_TITLE = {
+    waiting: "asked something nobody has answered yet: you owe it a reply",
+    working: "posted in the last couple of minutes",
+    standing: "live and polling, nothing outstanding: finished, waiting to be dismissed"
+  };
+
   /* --------------------------------------------------------------- sidebar */
   function renderSidebar() {
     var nav = document.getElementById("sbNav");
@@ -679,10 +722,24 @@ DASHBOARD_HTML = r"""<!doctype html>
        one line, ellipsised, so a long string cannot stretch the row. Shown verbatim:
        the convention is model-first, but nothing here parses or assumes that. */
     var caps = (a.capabilities || "").trim();
-    if (caps) { b.className = b.className + " has-caps"; }
-    var stack = E("div", "sb-astack", null, nm,
-      caps ? E("span", "sb-acaps", { "data-testid": "agent-caps", title: caps, text: caps }) : null);
-    b.appendChild(stack);
+    /* What the agent is doing goes on the second line with the model, not in the
+       right-hand rail. In the rail it competed with the name for a 256px sidebar
+       and the name lost, which is the wrong trade: you read the name first. */
+    var st = recent ? "" : agentState(a, waitingNamesHere());
+    var meta = null;
+    if (caps || st) {
+      b.className = b.className + " has-caps";
+      meta = E("div", "sb-ameta");
+      if (st) {
+        meta.appendChild(E("span", "sb-astate sb-astate--" + st,
+          { "data-testid": "agent-state", "data-state": st, title: STATE_TITLE[st] },
+          STATE_LABEL[st]));
+      }
+      if (caps) {
+        meta.appendChild(E("span", "sb-acaps", { "data-testid": "agent-caps", title: caps, text: caps }));
+      }
+    }
+    b.appendChild(E("div", "sb-astack", null, nm, meta));
     b.appendChild(E("span", "sb-alast mono",
       { "data-testid": "last-seen", text: agentStamp(a, seconds) }));
     return b;
@@ -1478,7 +1535,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     hueFor: hueFor, glyphFor: glyphFor, brandAccent: brandAccent,
     lastSeen: lastSeen, elapsedSince: elapsedSince, dedupe: dedupe,
     roomStatus: roomStatus, isClosed: isClosed, partitionRooms: partitionRooms,
-    waitingRows: waitingRows
+    waitingRows: waitingRows, agentState: agentState
   };
 
   /* ------------------------------------------------------------------ boot */

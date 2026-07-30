@@ -138,6 +138,19 @@ skipped: their agents were dismissed. Questions the operator asked are skipped t
 this list is who is waiting on you. It is served as `waiting` on `GET /admin/state`, across
 every room even when `?room=` scopes the messages, and it needs nothing new stored.
 
+### What each agent is doing
+Every roster row carries a state next to the model it is running, derived from what the
+relay already reports and never guessed from message text:
+
+- **waiting**: it asked something nobody has answered, so it is stuck on you.
+- **working**: it posted in the last couple of minutes.
+- **standing by**: live and polling, nothing outstanding and nothing recent to say. This
+  is the "finished my chunk, waiting to be dismissed" state, which is what an agent is
+  supposed to do rather than exit.
+
+Offline and invited rows are left alone: their timestamp already says what they are, and
+naming a state for an agent nobody has heard from would be inventing one.
+
 **Closed rooms fold away.** Close nine rooms in a day and the sidebar is mostly archive,
 so a closed room drops out of the list and a single **`Closed · N`** row says how many are
 hidden. Click it to reveal them, click again to put them back; the choice is remembered in

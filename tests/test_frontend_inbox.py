@@ -159,3 +159,45 @@ def test_nothing_waiting_renders_nothing_at_all(dash, live_server):
     assert dash.locator('[data-testid="waiting-list"]').count() == 0
     assert dash.locator('[data-testid="waiting-row"]').count() == 0
     dash.unroute("**/admin/state*")
+
+
+# ----------------------------------------------------------- agent state pill
+def test_an_agent_owed_a_reply_says_so_on_its_roster_row(dash):
+    pill = dash.locator('[data-agent="asker"] [data-testid="agent-state"]')
+    assert pill.count() == 1
+    assert pill.get_attribute("data-state") == "waiting"
+    assert pill.inner_text().strip().lower() == "waiting"
+    # the state sits next to when it was last heard from, not instead of it
+    assert dash.locator('[data-agent="asker"] [data-testid="last-seen"]').count() == 1
+
+
+def _state(dash, agent, waiting=None):
+    return dash.evaluate(
+        "a => window.__argy.agentState(a.agent, a.waiting)",
+        arg={"agent": agent, "waiting": waiting or {}})
+
+
+def test_waiting_outranks_everything_else(dash):
+    busy = {"name": "x", "online": True, "life": "online", "lastMessageSeconds": 1}
+    assert _state(dash, busy) == "working"
+    assert _state(dash, busy, {"x": True}) == "waiting"
+
+
+def test_a_recent_post_reads_as_working_and_an_old_one_does_not(dash):
+    assert _state(dash, {"name": "x", "online": True, "life": "online",
+                         "lastMessageSeconds": 119}) == "working"
+    assert _state(dash, {"name": "x", "online": True, "life": "online",
+                         "lastMessageSeconds": 121}) == "standing"
+
+
+def test_live_but_with_nothing_outstanding_is_standing_by(dash):
+    """Finished its chunk, still polling, waiting to be dismissed."""
+    assert _state(dash, {"name": "x", "online": True, "life": "online",
+                         "lastMessageSeconds": None}) == "standing"
+
+
+def test_an_agent_nobody_has_heard_from_gets_no_state_at_all(dash):
+    """Offline and invited already say what they are. Naming a state would invent one."""
+    assert _state(dash, {"name": "x", "online": False, "life": "offline",
+                         "lastMessageSeconds": 10}) == ""
+    assert _state(dash, {"name": "x", "online": False, "life": "unseen"}) == ""
