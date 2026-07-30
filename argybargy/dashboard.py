@@ -64,6 +64,7 @@ DASHBOARD_HTML = r"""<!doctype html>
 
   var TOKEN_KEY = "cc_admin";
   var THEME_KEY = "cc_theme";
+  var SEEN_KEY = "cc_seen";
   var POLL_MS = 3000;
   var FADE_MS = 8000;
   var BOTTOM_SLOP_PX = 32;
@@ -71,6 +72,30 @@ DASHBOARD_HTML = r"""<!doctype html>
     ["never", "never"], ["10m", "10 minutes"], ["30m", "30 minutes"],
     ["60m", "60 minutes"], ["1d", "1 day"], ["1w", "1 week"], ["1mo", "1 month"]
   ];
+
+  /* Unread lives in localStorage next to the token and the theme. Held in memory
+     only, it reset on every refresh, so every room you were not standing in came
+     back unread, which is the same as having no unread marks at all. */
+  function loadSeen() {
+    try {
+      var raw = JSON.parse(localStorage.getItem(SEEN_KEY) || "{}");
+      var out = {};
+      Object.keys(raw).forEach(function (r) {
+        var n = Number(raw[r]);
+        if (isFinite(n) && n > 0) { out[r] = n; }
+      });
+      return out;
+    } catch (e) {
+      return {};   /* corrupt or unreadable: start clean rather than break the boot */
+    }
+  }
+  function saveSeen() {
+    try {
+      localStorage.setItem(SEEN_KEY, JSON.stringify(S.seen));
+    } catch (e) {
+      /* quota or a locked-down profile: unread degrades to session-only, nothing else breaks */
+    }
+  }
 
   /* ---------------------------------------------------------------- state */
   var S = {
@@ -81,7 +106,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     tokenSave: null,          /* what the last Save did: checking | ok | empty | rejected | a reason */
     view: { kind: "room", room: "", agent: null },
     agents: [],               /* reconciled presence */
-    seen: {},                 /* room -> last_seq the operator has looked at */
+    seen: loadSeen(),         /* room -> last_seq the operator has looked at, persisted */
     fetchedAt: Date.now(),    /* when the current payload landed, for age drift */
     now: Date.now(),
     stick: true,              /* timeline pinned to bottom */
@@ -283,7 +308,23 @@ DASHBOARD_HTML = r"""<!doctype html>
   /* The room in view is, by definition, read. */
   function markSeen() {
     var s = roomSummaries()[S.view.room];
-    if (s) { S.seen[S.view.room] = s.last_seq; }
+    if (!s) { return; }
+    if (S.seen[S.view.room] === s.last_seq) { return; }
+    S.seen[S.view.room] = s.last_seq;
+    saveSeen();
+  }
+  /* A stored mark above the room's own last_seq means the sequence restarted under
+     us: a fresh database, since retention only ever deletes the oldest rows and so
+     never lowers MAX(seq). Those messages are new to this browser, so drop the mark
+     to zero and let them read as unread. Keeping the high mark would pin the room
+     permanently read; refusing to touch it would pin it permanently unread. */
+  function clampSeen() {
+    var sums = roomSummaries();
+    var changed = false;
+    Object.keys(S.seen).forEach(function (r) {
+      if (sums[r] && S.seen[r] > sums[r].last_seq) { S.seen[r] = 0; changed = true; }
+    });
+    if (changed) { saveSeen(); }
   }
 
   /* ------------------------------------------------------------- deep link */
@@ -885,6 +926,7 @@ DASHBOARD_HTML = r"""<!doctype html>
           if (rooms.length && rooms.indexOf(S.view.room) < 0) {
             S.view = { kind: "room", room: rooms[0], agent: null };
           }
+          clampSeen();
           markSeen();
           syncUrl();
           renderAll();

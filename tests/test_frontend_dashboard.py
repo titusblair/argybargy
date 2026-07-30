@@ -705,3 +705,92 @@ def test_online_still_means_connected_right_now(roster_page, client, roster_room
     assert stamps.count("online") == 1, stamps
 
 
+# ============================================= persisted unread (bug: reset on refresh)
+@pytest.fixture
+def unread_rooms(client, admin_headers):
+    """Two rooms with traffic: one to stand in, one to leave and come back to."""
+    codes = {}
+    for room in ("unreadhome", "unreadother"):
+        r = client.post("/admin/invite", headers=admin_headers,
+                        json={"name": f"agent-{room}", "room": room})
+        codes[room] = {"Authorization": f"Bearer {r.json()['code']}"}
+        client.post("/messages", headers=codes[room], json={"to": "all", "text": f"first in {room}"})
+    return codes
+
+
+def _open_dashboard(page, live_server, token, room):
+    page.add_init_script(f"localStorage.setItem('cc_admin', {token!r});")
+    page.goto(f"{live_server}/dashboard?room={room}")
+    page.wait_for_selector('[data-room="unreadother"]', timeout=15000)
+    return page
+
+
+def _has_unread(page, room):
+    return page.locator(f'[data-room="{room}"] [data-testid="room-unread"]').count() == 1
+
+
+def test_a_room_you_already_read_stays_read_across_a_refresh(page, live_server, admin_headers, unread_rooms):
+    """The reported bug: every refresh marked every room you were not standing in."""
+    token = admin_headers["X-Admin-Token"]
+    _open_dashboard(page, live_server, token, "unreadhome")
+    page.click('[data-room="unreadother"]')          # read it
+    page.wait_for_timeout(500)
+    page.click('[data-room="unreadhome"]')           # stand somewhere else
+    page.wait_for_timeout(500)
+    assert not _has_unread(page, "unreadother")
+
+    page.reload()
+    page.wait_for_selector('[data-room="unreadother"]', timeout=15000)
+    page.wait_for_timeout(500)
+    assert not _has_unread(page, "unreadother"), "a room read before the refresh came back unread"
+
+
+def test_a_message_that_arrived_while_you_were_away_is_still_unread_after_a_refresh(
+        page, live_server, admin_headers, unread_rooms):
+    """The other half: persisting must not swallow genuinely new traffic."""
+    token = admin_headers["X-Admin-Token"]
+    _open_dashboard(page, live_server, token, "unreadhome")
+    page.click('[data-room="unreadother"]')
+    page.wait_for_timeout(500)
+    page.click('[data-room="unreadhome"]')
+    page.wait_for_timeout(500)
+
+    from argybargy import app as appmod
+    appmod.message_store.add("unreadother", "agent-unreadother", "all", "arrived while away")
+    page.wait_for_timeout(4000)                      # one poll
+    assert _has_unread(page, "unreadother")
+
+    page.reload()
+    page.wait_for_selector('[data-room="unreadother"]', timeout=15000)
+    page.wait_for_timeout(500)
+    assert _has_unread(page, "unreadother"), "unread that survived the poll must survive the reload"
+
+
+def test_a_mark_left_over_from_an_older_database_does_not_pin_a_room_read(
+        page, live_server, admin_headers, unread_rooms):
+    """A stored mark above the room's own last_seq is stale, not a claim to have read it."""
+    token = admin_headers["X-Admin-Token"]
+    page.add_init_script(f"localStorage.setItem('cc_admin', {token!r});")
+    page.add_init_script('localStorage.setItem("cc_seen", JSON.stringify({unreadother: 999999}));')
+    page.goto(f"{live_server}/dashboard?room=unreadhome")
+    page.wait_for_selector('[data-room="unreadother"]', timeout=15000)
+    page.wait_for_timeout(500)
+    assert _has_unread(page, "unreadother"), "a stale high mark must not read as 'already seen'"
+    assert page.evaluate('JSON.parse(localStorage.getItem("cc_seen")).unreadother') == 0
+
+
+def test_unread_marks_are_written_to_local_storage(page, live_server, admin_headers, unread_rooms):
+    token = admin_headers["X-Admin-Token"]
+    _open_dashboard(page, live_server, token, "unreadhome")
+    page.wait_for_function(
+        '() => { var s = localStorage.getItem("cc_seen");'
+        ' return s && JSON.parse(s).unreadhome > 0; }', timeout=15000)
+
+
+def test_unreadable_stored_marks_do_not_break_the_boot(page, live_server, admin_headers, unread_rooms):
+    token = admin_headers["X-Admin-Token"]
+    page.add_init_script(f"localStorage.setItem('cc_admin', {token!r});")
+    page.add_init_script('localStorage.setItem("cc_seen", "{not json");')
+    page.goto(f"{live_server}/dashboard?room=unreadhome")
+    page.wait_for_selector('[data-testid="room-list"] [data-room]', timeout=15000)
+    assert page.locator('[data-testid="channel-title"]').inner_text() == "unreadhome"
