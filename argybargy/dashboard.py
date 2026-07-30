@@ -411,6 +411,14 @@ DASHBOARD_HTML = r"""<!doctype html>
       rl.appendChild(E("div", "sb-authnote", { "data-testid": "sidebar-auth-note" },
         "Hidden until the admin token is set."));
     }
+    /* The gear is the only permanent way to the token field, and it is built once
+       in the shell, so relabel it in place while there is no working token. */
+    var gear = document.getElementById("openDrawer");
+    if (gear) {
+      gear.title = S.authError ? "Admin: paste the admin token here" : "Admin";
+      gear.setAttribute("aria-label",
+        S.authError ? "Open admin drawer to paste the admin token" : "Open admin drawer");
+    }
     out.appendChild(rl);
 
     out.appendChild(E("div", "sb-label", null, "Agents ",
@@ -524,7 +532,12 @@ DASHBOARD_HTML = r"""<!doctype html>
           E("div", "conv-empty__t2", null,
             "The relay answered 401. Rooms and messages stay hidden until you paste the admin token."),
           E("button", "ad-btn primary conv-empty__cta",
-            { type: "button", id: "authOpenDrawer" }, "Paste admin token"))));
+            { type: "button", id: "authOpenDrawer" }, "Paste admin token"),
+          /* The field lives inside the admin drawer and does not exist until the
+             drawer has been rendered once, so from a cold load there is nothing
+             on screen to find. Name the route as well as offering the button. */
+          E("div", "conv-empty__where", { "data-testid": "auth-where" },
+            "The field is in the admin drawer, behind the gear in the sidebar footer."))));
       return;
     }
     if (!msgs.length) {
@@ -1028,7 +1041,9 @@ DASHBOARD_HTML = r"""<!doctype html>
         case "authOpenDrawer": {
           S.drawerOpen = true; renderDrawer();
           var tf = document.getElementById("adToken");
-          if (tf) { tf.focus(); }
+          /* Select as well as focus: the token that got us here is the wrong one,
+             so a paste should replace it rather than land next to it. */
+          if (tf) { tf.focus(); tf.select(); }
           break;
         }
         case "adClose": case "drawerScrim": S.drawerOpen = false; renderDrawer(); break;
