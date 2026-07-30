@@ -260,6 +260,39 @@ def test_header_shows_the_rooms_message_count(dash, seeded):
     assert re.match(r"^\d+ msg · (now|\d+[smh]) ago$", count.strip()), count
 
 
+# ============================================================= unauthenticated
+@pytest.fixture
+def anon(page, live_server, seeded):
+    """Dashboard loaded with no admin token, so /admin/state answers 401."""
+    page.add_init_script("localStorage.removeItem('cc_admin');")
+    page.goto(f"{live_server}/dashboard")
+    page.wait_for_selector('[data-testid="auth-required"]', timeout=15000)
+    return page
+
+
+def test_unauthenticated_dashboard_names_the_401(anon):
+    """No token must not read as a quiet relay with an empty room."""
+    text = anon.locator('[data-testid="auth-required"]').inner_text()
+    assert "Not signed in" in text
+    assert "401" in text
+    assert "admin token" in text
+    timeline = anon.locator(".conv-timeline").inner_text()
+    assert "Nothing in #" not in timeline, "a 401 must not render as an empty room"
+    assert anon.locator('[data-testid="channel-title"]').inner_text() == "not signed in"
+    assert anon.locator('[data-testid="sidebar-auth-note"]').count() == 1
+
+
+def test_auth_notice_points_at_the_token_field(anon):
+    anon.click("#authOpenDrawer")
+    anon.wait_for_selector("#adToken", timeout=15000)
+    assert anon.evaluate("document.activeElement.id") == "adToken"
+
+
+def test_a_valid_token_clears_the_auth_notice(dash):
+    assert dash.locator('[data-testid="auth-required"]').count() == 0
+    assert dash.locator('[data-testid="sidebar-auth-note"]').count() == 0
+
+
 # ============================================================== interaction
 def test_clicking_an_agent_opens_a_filtered_direct_view(dash):
     dash.click('[data-agent="codex-ui"]')

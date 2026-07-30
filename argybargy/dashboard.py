@@ -30,6 +30,8 @@ DASHBOARD_HTML = r"""<!doctype html>
 /*$vite$:1*/
 /* per-room rows: name takes the slack, count + age sit on the right */
 .sb-room__name{text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;overflow:hidden}.sb-room__meta{font-family:var(--mono);color:var(--faint);flex:none;font-size:10px;letter-spacing:.01em}.sb-room.active .sb-room__meta{color:var(--muted)}.sb-room.unread .sb-room__meta{color:var(--text)}.conv-header__count{font-family:var(--mono);color:var(--faint);white-space:nowrap;flex:none;font-size:11px}
+/* a 401 is not an empty relay: say so instead of rendering a blank room */
+.sb-authnote{color:var(--faint);padding:2px 16px 0;font-size:11px;line-height:1.5}.conv-empty__stack{place-items:center;max-width:44ch;display:grid}.conv-empty__cta{margin-top:14px}
 </style>
 </head>
 <body>
@@ -71,6 +73,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     token: localStorage.getItem(TOKEN_KEY) || "",
     data: null,               /* last /admin/state payload */
     conn: "idle",             /* idle | live | error */
+    authError: false,         /* /admin/state answered 401/403: no token, or a stale one */
     view: { kind: "room", room: "", agent: null },
     agents: [],               /* reconciled presence */
     seen: {},                 /* room -> last_seq the operator has looked at */
@@ -401,6 +404,10 @@ DASHBOARD_HTML = r"""<!doctype html>
         E("span", "sb-room__meta", { "data-testid": "room-meta", text: s ? count + " · " + age : "quiet" }),
         unread ? E("span", "sb-udot", { "data-testid": "room-unread" }) : null));
     });
+    if (S.authError) {
+      rl.appendChild(E("div", "sb-authnote", { "data-testid": "sidebar-auth-note" },
+        "Hidden until the admin token is set."));
+    }
     out.appendChild(rl);
 
     out.appendChild(E("div", "sb-label", null, "Agents ",
@@ -454,6 +461,12 @@ DASHBOARD_HTML = r"""<!doctype html>
     var h = document.getElementById("convHeader");
     if (!h) { return; }
     h.textContent = "";
+    /* A blank room name next to "0 present" looks like an idle relay. It is a 401. */
+    if (S.authError) {
+      h.appendChild(icon("key", 16, "ph conv-header__hash"));
+      h.appendChild(E("span", "conv-header__name", { "data-testid": "channel-title", text: "not signed in" }));
+      return;
+    }
     if (S.view.kind === "dm" && S.view.agent) {
       var who = S.view.agent;
       var peer = S.agents.filter(function (a) { return a.name === who && a.room === S.view.room; })[0] ||
@@ -498,6 +511,19 @@ DASHBOARD_HTML = r"""<!doctype html>
     if (!tl) { return; }
     var msgs = messagesFor();
     tl.textContent = "";
+    /* Without a token every list is empty, which reads exactly like a quiet relay.
+       Name the real reason and put the token field one click away. */
+    if (S.authError) {
+      tl.appendChild(E("div", "conv-empty", { "data-testid": "auth-required" },
+        E("div", "conv-empty__stack", null,
+          icon("key", 36, "ph"),
+          E("div", "conv-empty__t1", null, "Not signed in"),
+          E("div", "conv-empty__t2", null,
+            "The relay answered 401. Rooms and messages stay hidden until you paste the admin token."),
+          E("button", "ad-btn primary conv-empty__cta",
+            { type: "button", id: "authOpenDrawer" }, "Paste admin token"))));
+      return;
+    }
     if (!msgs.length) {
       tl.appendChild(E("div", "conv-empty", null,
         icon("hash", 36, "ph"),
@@ -750,9 +776,15 @@ DASHBOARD_HTML = r"""<!doctype html>
     var q = S.view.room ? "?room=" + encodeURIComponent(S.view.room) : "";
     return fetch("/admin/state" + q, { headers: { "X-Admin-Token": S.token } })
       .then(function (r) {
-        if (!r.ok) { S.conn = "error"; renderAll(); return; }
+        if (!r.ok) {
+          /* 401/403 is not an outage, it is a missing or stale admin token. Say so,
+             otherwise an unauthenticated dashboard renders as a plausible empty room. */
+          S.authError = r.status === 401 || r.status === 403;
+          S.conn = "error"; renderAll(); return;
+        }
         return r.json().then(function (j) {
           S.data = j;
+          S.authError = false;
           S.fetchedAt = Date.now();
           S.agents = reconcile(j);
           S.conn = "live";
@@ -765,7 +797,7 @@ DASHBOARD_HTML = r"""<!doctype html>
           renderAll();
         });
       })
-      .catch(function () { S.conn = "error"; renderAll(); });
+      .catch(function () { S.authError = false; S.conn = "error"; renderAll(); });
   }
 
   /* ---------------------------------------------------------------- render */
@@ -940,6 +972,12 @@ DASHBOARD_HTML = r"""<!doctype html>
         case "navOpen": S.navOpen = true; renderAll(); break;
         case "navScrim": S.navOpen = false; renderAll(); break;
         case "openDrawer": S.drawerOpen = true; renderDrawer(); break;
+        case "authOpenDrawer": {
+          S.drawerOpen = true; renderDrawer();
+          var tf = document.getElementById("adToken");
+          if (tf) { tf.focus(); }
+          break;
+        }
         case "adClose": case "drawerScrim": S.drawerOpen = false; renderDrawer(); break;
         case "recentToggle": S.recentOpen = !S.recentOpen; renderSidebar(); break;
         case "backToRoom": S.view = { kind: "room", room: S.view.room, agent: null }; S.stick = true; renderAll(); break;
