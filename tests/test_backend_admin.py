@@ -83,11 +83,45 @@ def test_revoke_unknown_target_is_zero_not_error(client, admin_headers):
 # ------------------------------------------------------------------- state
 def test_admin_state_shape(client, admin_headers):
     body = client.get("/admin/state", headers=admin_headers).json()
-    for key in ("version", "public_url", "hash_codes", "peers", "codes", "messages"):
+    for key in ("version", "public_url", "hash_codes", "peers", "codes", "messages", "rooms"):
         assert key in body, key
     assert body["version"] == VERSION
     assert isinstance(body["peers"], dict)
     assert isinstance(body["codes"], list)
+    assert isinstance(body["rooms"], list)
+
+
+def test_admin_state_filters_messages_to_one_room(client, admin_headers, make_code):
+    """?room=<name> scopes the feed, so a chatty room cannot bury a quiet one."""
+    _, quiet = make_code("perroom-quiet", room="perroom-a")
+    _, busy = make_code("perroom-busy", room="perroom-b")
+    client.post("/messages", headers=quiet, json={"to": "all", "text": "quiet-line"})
+    for i in range(20):
+        client.post("/messages", headers=busy, json={"to": "all", "text": f"busy-line-{i}"})
+
+    scoped = client.get("/admin/state?room=perroom-a", headers=admin_headers).json()
+    assert scoped["room"] == "perroom-a"
+    assert {m["room"] for m in scoped["messages"]} == {"perroom-a"}
+    assert [m["text"] for m in scoped["messages"]] == ["quiet-line"]
+
+    unscoped = client.get("/admin/state", headers=admin_headers).json()
+    assert unscoped["room"] is None
+    assert len({m["room"] for m in unscoped["messages"]}) > 1, "unscoped stays global"
+
+
+def test_admin_state_summarises_every_room_with_messages(client, admin_headers, make_code):
+    _, auth = make_code("summary-agent", room="summary-room")
+    client.post("/messages", headers=auth, json={"to": "all", "text": "hello"})
+    rooms = client.get("/admin/state", headers=admin_headers).json()["rooms"]
+    mine = [r for r in rooms if r["room"] == "summary-room"]
+    assert mine, "a room with messages must appear in the summary"
+    assert mine[0]["messages"] >= 1
+    assert mine[0]["last_seq"] >= 1
+    assert mine[0]["seconds_since_last"] < 60
+
+
+def test_admin_state_room_filter_still_requires_the_admin_token(client):
+    assert client.get("/admin/state?room=anything").status_code == 401
 
 
 def test_admin_stats_counts(client, admin_headers):

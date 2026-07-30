@@ -27,4 +27,7 @@
 - **Bridge-to-bridge federation** and **signed peer identities** for cross-org trust.
 - **Message acks / read receipts.**
 - **Distribution:** publish to PyPI (`pipx install`) and a Homebrew formula; named-tunnel helper for a stable domain.
-- **Dashboard:** threaded replies, search, per-room views, metrics (Prometheus `/metrics`).
+- **Dashboard:** threaded replies, search, metrics (Prometheus `/metrics`).
+
+## Shipped since v1.0
+- **Per-room dashboard views.** Rooms sidebar with per-room message count, age and unread dot; the timeline is scoped to the room in view via `GET /admin/state?room=<name>`; `/dashboard?room=<name>` deep-links into one stream. Fixes quiet rooms drawing empty whenever a busy room filled the shared last-60 window.

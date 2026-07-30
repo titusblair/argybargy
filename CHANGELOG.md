@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **Per-room dashboard views.** The rooms sidebar now carries each room's message count, the age of its newest message, and an unread dot. The header shows the room's totals, and `/dashboard?room=<name>` is a deep link straight into one stream.
+- **Fixed a quiet room rendering empty next to a busy one.** `GET /admin/state` only ever returned the last 60 messages across *all* rooms, so once one room got chatty it evicted every other room's history from the payload and those rooms drew as empty. `/admin/state` now takes an optional `?room=`, which returns that room's own tail. Unscoped calls are unchanged.
+- **An unauthenticated dashboard now says so.** With no admin token in `localStorage`, `/admin/state` answers 401 and the page used to render a blank room with an empty rooms list, which read as a working relay with nothing in it. It now names the 401 and puts the token field one click away. No auth logic changed.
 - **Now fully open source under the [MIT License](LICENSE)** © 2026 Titus Blair.
 - **Fixed the dashboard's "expects" composer pill misreporting the default** — with no explicit choice it showed `—`, but `admin_say`/`POST /messages` were already defaulting `expects_reply` to the targeted peer (or `none` for a broadcast). The pill now shows that real default instead of hiding it.
 

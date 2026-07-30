@@ -162,6 +162,39 @@ def test_store_stats_counts_messages_and_rooms(tmp_path):
     assert stats["rooms"] == 2
 
 
+def test_recent_in_room_returns_only_that_room(tmp_path):
+    """A busy room must not crowd a quiet one out of the per-room feed."""
+    store = MessageStore(tmp_path / "perroom.db")
+    store.add("quiet", "alice", "all", "one quiet line")
+    for i in range(40):
+        store.add("busy", "bob", "all", f"chatter-{i}")
+    feed = store.recent_in_room("quiet", 60)
+    assert [m["text"] for m in feed] == ["one quiet line"]
+    assert {m["room"] for m in feed} == {"quiet"}
+    busy = store.recent_in_room("busy", 5)
+    assert [m["text"] for m in busy] == [f"chatter-{i}" for i in range(35, 40)], "newest 5, oldest first"
+
+
+def test_room_summaries_count_and_age_each_room(tmp_path):
+    store = MessageStore(tmp_path / "summaries.db")
+    store.add("alpha", "a", "all", "1")
+    store.add("alpha", "a", "all", "2")
+    store.add("beta", "b", "all", "1")
+    by = {s["room"]: s for s in store.room_summaries()}
+    assert set(by) == {"alpha", "beta"}
+    assert by["alpha"]["messages"] == 2
+    assert by["alpha"]["last_seq"] == 2
+    assert by["beta"]["messages"] == 1
+    for s in by.values():
+        assert s["seconds_since_last"] < 60
+        assert s["last_ts"]
+
+
+def test_room_summaries_ignore_rooms_with_no_messages(tmp_path):
+    store = MessageStore(tmp_path / "empty-room.db")
+    assert store.room_summaries() == []
+
+
 # --------------------------------------------------------------------- auth
 def test_issue_resolve_and_revoke_roundtrip(tmp_path):
     cs = CodeStore(tmp_path / "codes.db")
