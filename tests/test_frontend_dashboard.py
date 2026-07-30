@@ -27,12 +27,17 @@ def test_page_has_no_dynamic_code_execution():
     assert "new Function" not in DASHBOARD_HTML
 
 
-def test_page_only_talks_to_the_five_admin_endpoints():
+def test_page_only_talks_to_the_admin_endpoints():
+    """Every request the page makes is an admin endpoint, and no other host.
+
+    The room-lifecycle calls build their path from the room name, so they show up as
+    the literal prefix rather than a whole path. That still pins them to /admin/.
+    """
     called = set(re.findall(r'fetch\(\s*"(/[^"]*)"', DASHBOARD_HTML))
-    called |= set(re.findall(r'api\(\s*"(/[^"]*)"', DASHBOARD_HTML))
+    called |= set(re.findall(r'api\(\s*"(/[^"+]*)"', DASHBOARD_HTML))
     assert called == {
         "/admin/state", "/admin/say", "/admin/invite",
-        "/admin/revoke", "/admin/regenerate-token",
+        "/admin/revoke", "/admin/regenerate-token", "/admin/rooms/",
     }, called
 
 

@@ -1,7 +1,11 @@
-"""Durable message storage (SQLite): messages, atomic claims, retention.
+"""Durable message storage (SQLite): messages, atomic claims, retention, room status.
 
 Survives restarts; the per-room cap (ARGYBARGY_MAX_MESSAGES_PER_ROOM) bounds disk
 growth. Each method holds a lock only for the quick query — never across an ``await``.
+
+Room status lives here rather than in memory because "the operator closed this room"
+has to outlive a restart. A room with no row is open, so rooms still come into
+existence the way they always have: by somebody posting the first message.
 """
 from __future__ import annotations
 
@@ -54,6 +58,14 @@ class MessageStore:
                 self._db.execute("ALTER TABLE messages ADD COLUMN expects_reply TEXT NOT NULL DEFAULT 'none'")
             if "claimed_by" not in cols:
                 self._db.execute("ALTER TABLE messages ADD COLUMN claimed_by TEXT")
+            self._db.execute(
+                """CREATE TABLE IF NOT EXISTS rooms (
+                    room TEXT PRIMARY KEY,
+                    status TEXT NOT NULL DEFAULT 'open',
+                    closed_at TEXT,
+                    closed_by TEXT
+                )"""
+            )
             self._db.commit()
 
     @staticmethod
@@ -123,7 +135,7 @@ class MessageStore:
         return [dict(room=r["room"], **self._to_msg(r)) for r in rows]
 
     def room_summaries(self) -> list:
-        """One row per room that has messages: volume + how long it has been quiet.
+        """One row per room that has messages: volume, how long it has been quiet, status.
 
         Busiest-most-recent first. The GROUP BY rides the existing
         idx_msg_room_seq(room, seq) index, so no extra index is needed.
@@ -133,12 +145,80 @@ class MessageStore:
                 "SELECT room, COUNT(*) AS n, MAX(seq) AS last_seq, MAX(ts) AS last_ts "
                 "FROM messages GROUP BY room"
             ).fetchall()
+            status_rows = self._db.execute("SELECT room, status, closed_at, closed_by FROM rooms").fetchall()
+        by_room = {r["room"]: r for r in status_rows}
         now = datetime.now(timezone.utc)
-        out = [{"room": r["room"], "messages": int(r["n"]), "last_seq": int(r["last_seq"]),
-                "last_ts": r["last_ts"], "seconds_since_last": _seconds_since(r["last_ts"], now)}
-               for r in rows]
+        out = []
+        for r in rows:
+            st = by_room.get(r["room"])
+            closed = bool(st) and st["status"] == "closed"
+            out.append({"room": r["room"], "messages": int(r["n"]), "last_seq": int(r["last_seq"]),
+                        "last_ts": r["last_ts"], "seconds_since_last": _seconds_since(r["last_ts"], now),
+                        "status": "closed" if closed else "open",
+                        "closed_at": st["closed_at"] if closed else None,
+                        "closed_by": st["closed_by"] if closed else None})
         out.sort(key=lambda s: (s["seconds_since_last"], s["room"]))
         return out
+
+    # ----- room lifecycle -----
+
+    def room_status(self, room) -> dict:
+        """Is this room open or closed? A room with no row has never been closed.
+
+        Returned shape is what ``GET /messages`` hands an agent, so the caller can
+        pass it straight through: ``{name, status, closed_at, closed_by}``.
+        """
+        with self._lock:
+            row = self._db.execute(
+                "SELECT status, closed_at, closed_by FROM rooms WHERE room=?", (room,)
+            ).fetchone()
+        if row is None or row["status"] != "closed":
+            return {"name": room, "status": "open", "closed_at": None, "closed_by": None}
+        return {"name": room, "status": "closed", "closed_at": row["closed_at"], "closed_by": row["closed_by"]}
+
+    def set_room_status(self, room, status, actor="") -> dict:
+        """Close or reopen a room. Reopening clears who closed it and when."""
+        closed = status == "closed"
+        closed_at = _now_iso() if closed else None
+        closed_by = (actor or "operator") if closed else None
+        with self._lock:
+            self._db.execute(
+                "INSERT OR REPLACE INTO rooms (room, status, closed_at, closed_by) VALUES (?,?,?,?)",
+                (room, "closed" if closed else "open", closed_at, closed_by),
+            )
+            self._db.commit()
+        return {"name": room, "status": "closed" if closed else "open",
+                "closed_at": closed_at, "closed_by": closed_by}
+
+    def room_statuses(self) -> dict:
+        """Every room that has a status record, keyed by name. For the dashboard."""
+        with self._lock:
+            rows = self._db.execute("SELECT room, status, closed_at, closed_by FROM rooms").fetchall()
+        out = {}
+        for r in rows:
+            closed = r["status"] == "closed"
+            out[r["room"]] = {"name": r["room"], "status": "closed" if closed else "open",
+                              "closed_at": r["closed_at"] if closed else None,
+                              "closed_by": r["closed_by"] if closed else None}
+        return out
+
+    def room_quiet_seconds(self, room) -> float | None:
+        """How long since anyone last posted here. None when the room has no messages.
+
+        This is the durable half of the poll budget: it is the same number for every
+        agent in the room, it survives a restart, and any message resets it.
+        """
+        with self._lock:
+            row = self._db.execute("SELECT MAX(ts) AS ts FROM messages WHERE room=?", (room,)).fetchone()
+        if not row or not row["ts"]:
+            return None
+        return _seconds_since(row["ts"], datetime.now(timezone.utc))
+
+    def senders(self, room) -> list:
+        """Everyone who has ever posted in one room. Durable membership, one room."""
+        with self._lock:
+            rows = self._db.execute("SELECT DISTINCT sender FROM messages WHERE room=?", (room,)).fetchall()
+        return sorted(r["sender"] for r in rows)
 
     def members_by_room(self) -> dict:
         """Everyone who has ever posted, per room, with the age of their last message.

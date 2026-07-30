@@ -67,12 +67,33 @@ def build_roster(peers_by_room: dict, code_rows: list, members_by_room: dict) ->
     return out
 
 
+def resolve_expects(expects_reply: str, sender: str, members) -> str:
+    """Turn a vague "anyone" into a name when only one other agent could answer.
+
+    ``expects_reply='anyone'`` is an open question. In a room of five that is
+    exactly right, and the claim endpoint sorts out who takes it. In a room of two
+    it is needlessly vague: there is only one agent who can answer, so say which.
+
+    ``members`` is durable membership (code holders plus everyone who has posted),
+    never live presence. An agent that finished its work and went quiet is still
+    the one participant, and presence would have dropped it and left this vague.
+
+    Anything other than 'anyone' comes back untouched, so a directed message and a
+    plain 'none' are unaffected. Pure: no clock, no I/O.
+    """
+    if expects_reply != "anyone":
+        return expects_reply
+    others = sorted({m for m in members if m and m != sender})
+    return others[0] if len(others) == 1 else "anyone"
+
+
 class Hub:
     def __init__(self, store) -> None:
         self.store = store
         self._last_seen: dict = {}    # room -> {peer: monotonic ts}
         self._waiters: dict = {}      # room -> list[asyncio.Event]
         self._post_times: dict = {}   # rate-limit key -> list[monotonic ts]
+        self._wait_started: dict = {}  # (room, peer) -> monotonic ts of the current dry stretch
 
     # ----- in-memory, loop-thread only -----
 
@@ -123,22 +144,66 @@ class Hub:
     async def history(self, room, limit) -> list:
         return await asyncio.to_thread(self.store.history, room, limit)
 
+    async def room_status(self, room) -> dict:
+        return await asyncio.to_thread(self.store.room_status, room)
+
+    async def set_room_status(self, room, status, actor="") -> dict:
+        """Close or reopen a room, then wake every long-poll parked on it.
+
+        The wake is the point. Without it an agent that is 2 seconds into a 25 second
+        poll sits there for another 23 seconds after the operator has closed the room,
+        which turns a clean exit into a stall.
+        """
+        row = await asyncio.to_thread(self.store.set_room_status, room, status, actor)
+        self._wake(room)
+        return row
+
+    async def room_quiet_seconds(self, room):
+        return await asyncio.to_thread(self.store.room_quiet_seconds, room)
+
+    async def room_members(self, room) -> set:
+        return set(await asyncio.to_thread(self.store.senders, room))
+
     async def read(self, room, peer, since, wait):
+        """Long-poll. Returns ``(messages, cursor, room_status, waited_seconds)``.
+
+        ``waited_seconds`` is how long this peer has gone without receiving anything,
+        across polls, not just within this one. It is the per-poller half of the
+        safety valve, and it is what bounds an agent parked on a room that has never
+        had a message in it. Receiving a message resets it to zero.
+
+        A closed room returns straight away even when ``wait`` is high: there is
+        nothing left to wait for.
+        """
+        key = (room, peer)
+        started = self._wait_started.setdefault(key, time.monotonic())
         deadline = time.monotonic() + max(0.0, wait)
         waiters = self._waiters.setdefault(room, [])
+
+        async def _done(msgs):
+            if msgs:
+                self._wait_started.pop(key, None)
+            cursor = await asyncio.to_thread(self.store.room_seq, room)
+            status = await asyncio.to_thread(self.store.room_status, room)
+            waited = 0.0 if msgs else round(time.monotonic() - started, 1)
+            return msgs, cursor, status, waited
+
         while True:
             msgs = await asyncio.to_thread(self.store.since, room, peer, since)
             if msgs or wait <= 0:
-                return msgs, await asyncio.to_thread(self.store.room_seq, room)
+                return await _done(msgs)
+            status = await asyncio.to_thread(self.store.room_status, room)
+            if status["status"] == "closed":
+                return await _done([])
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return [], await asyncio.to_thread(self.store.room_seq, room)
+                return await _done([])
             ev = asyncio.Event()
             waiters.append(ev)
             try:
                 await asyncio.wait_for(ev.wait(), timeout=remaining)
             except asyncio.TimeoutError:
-                return [], await asyncio.to_thread(self.store.room_seq, room)
+                return await _done([])
             finally:
                 try:
                     waiters.remove(ev)

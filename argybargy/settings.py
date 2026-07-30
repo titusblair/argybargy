@@ -48,6 +48,11 @@ class Settings:
     max_messages_per_room: int = _int("ARGYBARGY_MAX_MESSAGES_PER_ROOM", 2000)  # 0 = unlimited
     online_window: int = _int("ARGYBARGY_ONLINE_WINDOW", 60)
 
+    # the safety valve: how long a room may sit silent before a polling agent is told
+    # to stop waiting and leave. 0 disables it, which means an agent will poll for as
+    # long as the operator lets it. Only do that if you never forget to close a room.
+    max_idle_seconds: int = _int("ARGYBARGY_MAX_IDLE_SECONDS", 1800)
+
     # rate limiting (per agent)
     rate_max: int = _int("ARGYBARGY_RATE_MAX", 10)
     rate_window: float = _float("ARGYBARGY_RATE_WINDOW", 10.0)

@@ -34,6 +34,10 @@ DASHBOARD_HTML = r"""<!doctype html>
 .sb-authnote{color:var(--faint);padding:2px 16px 0;font-size:11px;line-height:1.5}.conv-empty__stack{place-items:center;max-width:44ch;display:grid}.conv-empty__cta{margin-top:14px}
 /* saving a token, and a regenerate you can never win, both have to say so */
 .ad-notebox{color:var(--muted);background:var(--raised);border:1px solid var(--border-strong);border-radius:9px;margin-top:10px;padding:10px 12px;font-size:12px;line-height:1.6}.ad-errorbox .ad-hint{color:color-mix(in srgb, var(--red) 60%, var(--faint));margin-top:6px}.ad-errorbox code,.ad-notebox code{font-family:var(--mono);font-size:11px}.conv-empty__where{color:var(--faint);text-align:center;margin-top:8px;font-size:11.5px;line-height:1.5}
+/* a closed room has to read as closed across the room, not inside a tooltip */
+.sb-room.closed{opacity:.62}.sb-room.closed .sb-room__name{text-decoration:line-through;text-decoration-color:var(--faint)}.sb-room.closed .sb-room__meta{color:var(--amber);letter-spacing:.06em;text-transform:uppercase;font-size:9px;font-weight:600}.sb-room.closed .sb-ph{color:var(--amber)}.conv-header__status{color:var(--green);background:var(--green-dim);border:1px solid color-mix(in srgb, var(--green) 34%, transparent);border-radius:999px;flex:none;text-transform:uppercase;letter-spacing:.09em;padding:2px 8px;font-size:9px;font-weight:600}.conv-header__status.is-closed{color:var(--amber);background:var(--amber-dim);border-color:color-mix(in srgb, var(--amber) 42%, transparent)}.conv-header__lifebtn{height:24px;color:var(--muted);border:1px solid var(--border-strong);background:0 0;border-radius:999px;flex:none;align-items:center;gap:5px;margin-left:auto;padding:0 10px;font-size:11px;font-weight:500;display:inline-flex}.conv-header__lifebtn:hover{color:var(--red);border-color:color-mix(in srgb, var(--red) 40%, transparent);background:var(--red-dim)}.conv-header__lifebtn.confirm{color:#fff;background:var(--red);border-color:#0000}.conv-header__lifebtn.reopen:hover{color:var(--green);border-color:color-mix(in srgb, var(--green) 40%, transparent);background:var(--green-dim)}
+/* the model an agent is running belongs on its roster row, not only in the drawer */
+.sb-astack{flex:1;min-width:0}.sb-acaps{text-overflow:ellipsis;white-space:nowrap;color:var(--faint);font-size:10.5px;line-height:1.25;display:block;overflow:hidden}.sb-arow.has-caps{max-height:52px}.sb-arow.has-caps .sb-aname{line-height:1.3;display:block}@media (width<=640px){.conv-header__lifebtn{padding:0 8px}.conv-header__status{display:none}}
 </style>
 </head>
 <body>
@@ -44,7 +48,7 @@ DASHBOARD_HTML = r"""<!doctype html>
 
   /* ---------------------------------------------------------------- icons */
   /* Phosphor Icons (MIT), 24x24 drawn on a 0 0 256 256 grid. */
-  var ICON = {"hash":"M224,88H175.4l8.47-46.57a8,8,0,0,0-15.74-2.86l-9,49.43H111.4l8.47-46.57a8,8,0,0,0-15.74-2.86L95.14,88H48a8,8,0,0,0,0,16H92.23L83.5,152H32a8,8,0,0,0,0,16H80.6l-8.47,46.57a8,8,0,0,0,6.44,9.3A7.79,7.79,0,0,0,80,224a8,8,0,0,0,7.86-6.57l9-49.43H144.6l-8.47,46.57a8,8,0,0,0,6.44,9.3A7.79,7.79,0,0,0,144,224a8,8,0,0,0,7.86-6.57l9-49.43H208a8,8,0,0,0,0-16H163.77l8.73-48H224a8,8,0,0,0,0-16Zm-76.5,64H99.77l8.73-48h47.73Z","caretRight":"M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z","gear":"M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z","circleHalf":"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm8,16.37a86.4,86.4,0,0,1,16,3V212.67a86.4,86.4,0,0,1-16,3Zm32,9.26a87.81,87.81,0,0,1,16,10.54V195.83a87.81,87.81,0,0,1-16,10.54ZM40,128a88.11,88.11,0,0,1,80-87.63V215.63A88.11,88.11,0,0,1,40,128Zm160,50.54V77.46a87.82,87.82,0,0,1,0,101.08Z","sun":"M120,40V16a8,8,0,0,1,16,0V40a8,8,0,0,1-16,0Zm72,88a64,64,0,1,1-64-64A64.07,64.07,0,0,1,192,128Zm-16,0a48,48,0,1,0-48,48A48.05,48.05,0,0,0,176,128ZM58.34,69.66A8,8,0,0,0,69.66,58.34l-16-16A8,8,0,0,0,42.34,53.66Zm0,116.68-16,16a8,8,0,0,0,11.32,11.32l16-16a8,8,0,0,0-11.32-11.32ZM192,72a8,8,0,0,0,5.66-2.34l16-16a8,8,0,0,0-11.32-11.32l-16,16A8,8,0,0,0,192,72Zm5.66,114.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32-11.32ZM48,128a8,8,0,0,0-8-8H16a8,8,0,0,0,0,16H40A8,8,0,0,0,48,128Zm80,80a8,8,0,0,0-8,8v24a8,8,0,0,0,16,0V216A8,8,0,0,0,128,208Zm112-88H216a8,8,0,0,0,0,16h24a8,8,0,0,0,0-16Z","moon":"M233.54,142.23a8,8,0,0,0-8-2,88.08,88.08,0,0,1-109.8-109.8,8,8,0,0,0-10-10,104.84,104.84,0,0,0-52.91,37A104,104,0,0,0,136,224a103.09,103.09,0,0,0,62.52-20.88,104.84,104.84,0,0,0,37-52.91A8,8,0,0,0,233.54,142.23ZM188.9,190.34A88,88,0,0,1,65.66,67.11a89,89,0,0,1,31.4-26A106,106,0,0,0,96,56,104.11,104.11,0,0,0,200,160a106,106,0,0,0,14.92-1.06A89,89,0,0,1,188.9,190.34Z","usersThree":"M244.8,150.4a8,8,0,0,1-11.2-1.6A51.6,51.6,0,0,0,192,128a8,8,0,0,1-7.37-4.89,8,8,0,0,1,0-6.22A8,8,0,0,1,192,112a24,24,0,1,0-23.24-30,8,8,0,1,1-15.5-4A40,40,0,1,1,219,117.51a67.94,67.94,0,0,1,27.43,21.68A8,8,0,0,1,244.8,150.4ZM190.92,212a8,8,0,1,1-13.84,8,57,57,0,0,0-98.16,0,8,8,0,1,1-13.84-8,72.06,72.06,0,0,1,33.74-29.92,48,48,0,1,1,58.36,0A72.06,72.06,0,0,1,190.92,212ZM128,176a32,32,0,1,0-32-32A32,32,0,0,0,128,176ZM72,120a8,8,0,0,0-8-8A24,24,0,1,1,87.24,82a8,8,0,1,0,15.5-4A40,40,0,1,0,37,117.51,67.94,67.94,0,0,0,9.6,139.19a8,8,0,1,0,12.8,9.61A51.6,51.6,0,0,1,64,128,8,8,0,0,0,72,120Z","paperPlane":"M231.87,114l-168-95.89A16,16,0,0,0,40.92,37.34L71.55,128,40.92,218.67A16,16,0,0,0,56,240a16.15,16.15,0,0,0,7.93-2.1l167.92-96.05a16,16,0,0,0,.05-27.89ZM56,224a.56.56,0,0,0,0-.12L85.74,136H144a8,8,0,0,0,0-16H85.74L56.06,32.16A.46.46,0,0,0,56,32l168,95.83Z","person":"M230.93,220a8,8,0,0,1-6.93,4H32a8,8,0,0,1-6.92-12c15.23-26.33,38.7-45.21,66.09-54.16a72,72,0,1,1,73.66,0c27.39,8.95,50.86,27.83,66.09,54.16A8,8,0,0,1,230.93,220Z","gearSix":"M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A112.1,112.1,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.62a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.08,8.08,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8.08,8.08,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z","copy":"M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z","broadcast":"M128,88a40,40,0,1,0,40,40A40,40,0,0,0,128,88Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,128,152Zm73.71,7.14a80,80,0,0,1-14.08,22.2,8,8,0,0,1-11.92-10.67,63.95,63.95,0,0,0,0-85.33,8,8,0,1,1,11.92-10.67,80.08,80.08,0,0,1,14.08,84.47ZM69,103.09a64,64,0,0,0,11.26,67.58,8,8,0,0,1-11.92,10.67,79.93,79.93,0,0,1,0-106.67A8,8,0,1,1,80.29,85.34,63.77,63.77,0,0,0,69,103.09ZM248,128a119.58,119.58,0,0,1-34.29,84,8,8,0,1,1-11.42-11.2,103.9,103.9,0,0,0,0-145.56A8,8,0,1,1,213.71,44,119.58,119.58,0,0,1,248,128ZM53.71,200.78A8,8,0,1,1,42.29,212a119.87,119.87,0,0,1,0-168,8,8,0,1,1,11.42,11.2,103.9,103.9,0,0,0,0,145.56Z","key":"M216.57,39.43A80,80,0,0,0,83.91,120.78L28.69,176A15.86,15.86,0,0,0,24,187.31V216a16,16,0,0,0,16,16H72a8,8,0,0,0,8-8V208H96a8,8,0,0,0,8-8V184h16a8,8,0,0,0,5.66-2.34l9.56-9.57A79.73,79.73,0,0,0,160,176h.1A80,80,0,0,0,216.57,39.43ZM224,98.1c-1.09,34.09-29.75,61.86-63.89,61.9H160a63.7,63.7,0,0,1-23.65-4.51,8,8,0,0,0-8.84,1.68L116.69,168H96a8,8,0,0,0-8,8v16H72a8,8,0,0,0-8,8v16H40V187.31l58.83-58.82a8,8,0,0,0,1.68-8.84A63.72,63.72,0,0,1,96,95.92c0-34.14,27.81-62.8,61.9-63.89A64,64,0,0,1,224,98.1ZM192,76a12,12,0,1,1-12-12A12,12,0,0,1,192,76Z","arrowClockwise":"M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z","arrowLeft":"M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z","at":"M128,24a104,104,0,0,0,0,208c21.51,0,44.1-6.48,60.43-17.33a8,8,0,0,0-8.86-13.33C166,210.38,146.21,216,128,216a88,88,0,1,1,88-88c0,26.45-10.88,32-20,32s-20-5.55-20-32V88a8,8,0,0,0-16,0v4.26a48,48,0,1,0,5.93,65.1c6,12,16.35,18.64,30.07,18.64,22.54,0,36-17.94,36-48A104.11,104.11,0,0,0,128,24Zm0,136a32,32,0,1,1,32-32A32,32,0,0,1,128,160Z","check":"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"};
+  var ICON = {"lockSimple":"M208,80H176V56a48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80ZM96,56a32,32,0,0,1,64,0V80H96ZM208,208H48V96H208V208Z","lockOpen":"M208,80H96V56a32,32,0,0,1,64,0,8,8,0,0,0,16,0,48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80Zm0,128H48V96H208V208Z","hash":"M224,88H175.4l8.47-46.57a8,8,0,0,0-15.74-2.86l-9,49.43H111.4l8.47-46.57a8,8,0,0,0-15.74-2.86L95.14,88H48a8,8,0,0,0,0,16H92.23L83.5,152H32a8,8,0,0,0,0,16H80.6l-8.47,46.57a8,8,0,0,0,6.44,9.3A7.79,7.79,0,0,0,80,224a8,8,0,0,0,7.86-6.57l9-49.43H144.6l-8.47,46.57a8,8,0,0,0,6.44,9.3A7.79,7.79,0,0,0,144,224a8,8,0,0,0,7.86-6.57l9-49.43H208a8,8,0,0,0,0-16H163.77l8.73-48H224a8,8,0,0,0,0-16Zm-76.5,64H99.77l8.73-48h47.73Z","caretRight":"M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z","gear":"M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z","circleHalf":"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm8,16.37a86.4,86.4,0,0,1,16,3V212.67a86.4,86.4,0,0,1-16,3Zm32,9.26a87.81,87.81,0,0,1,16,10.54V195.83a87.81,87.81,0,0,1-16,10.54ZM40,128a88.11,88.11,0,0,1,80-87.63V215.63A88.11,88.11,0,0,1,40,128Zm160,50.54V77.46a87.82,87.82,0,0,1,0,101.08Z","sun":"M120,40V16a8,8,0,0,1,16,0V40a8,8,0,0,1-16,0Zm72,88a64,64,0,1,1-64-64A64.07,64.07,0,0,1,192,128Zm-16,0a48,48,0,1,0-48,48A48.05,48.05,0,0,0,176,128ZM58.34,69.66A8,8,0,0,0,69.66,58.34l-16-16A8,8,0,0,0,42.34,53.66Zm0,116.68-16,16a8,8,0,0,0,11.32,11.32l16-16a8,8,0,0,0-11.32-11.32ZM192,72a8,8,0,0,0,5.66-2.34l16-16a8,8,0,0,0-11.32-11.32l-16,16A8,8,0,0,0,192,72Zm5.66,114.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32-11.32ZM48,128a8,8,0,0,0-8-8H16a8,8,0,0,0,0,16H40A8,8,0,0,0,48,128Zm80,80a8,8,0,0,0-8,8v24a8,8,0,0,0,16,0V216A8,8,0,0,0,128,208Zm112-88H216a8,8,0,0,0,0,16h24a8,8,0,0,0,0-16Z","moon":"M233.54,142.23a8,8,0,0,0-8-2,88.08,88.08,0,0,1-109.8-109.8,8,8,0,0,0-10-10,104.84,104.84,0,0,0-52.91,37A104,104,0,0,0,136,224a103.09,103.09,0,0,0,62.52-20.88,104.84,104.84,0,0,0,37-52.91A8,8,0,0,0,233.54,142.23ZM188.9,190.34A88,88,0,0,1,65.66,67.11a89,89,0,0,1,31.4-26A106,106,0,0,0,96,56,104.11,104.11,0,0,0,200,160a106,106,0,0,0,14.92-1.06A89,89,0,0,1,188.9,190.34Z","usersThree":"M244.8,150.4a8,8,0,0,1-11.2-1.6A51.6,51.6,0,0,0,192,128a8,8,0,0,1-7.37-4.89,8,8,0,0,1,0-6.22A8,8,0,0,1,192,112a24,24,0,1,0-23.24-30,8,8,0,1,1-15.5-4A40,40,0,1,1,219,117.51a67.94,67.94,0,0,1,27.43,21.68A8,8,0,0,1,244.8,150.4ZM190.92,212a8,8,0,1,1-13.84,8,57,57,0,0,0-98.16,0,8,8,0,1,1-13.84-8,72.06,72.06,0,0,1,33.74-29.92,48,48,0,1,1,58.36,0A72.06,72.06,0,0,1,190.92,212ZM128,176a32,32,0,1,0-32-32A32,32,0,0,0,128,176ZM72,120a8,8,0,0,0-8-8A24,24,0,1,1,87.24,82a8,8,0,1,0,15.5-4A40,40,0,1,0,37,117.51,67.94,67.94,0,0,0,9.6,139.19a8,8,0,1,0,12.8,9.61A51.6,51.6,0,0,1,64,128,8,8,0,0,0,72,120Z","paperPlane":"M231.87,114l-168-95.89A16,16,0,0,0,40.92,37.34L71.55,128,40.92,218.67A16,16,0,0,0,56,240a16.15,16.15,0,0,0,7.93-2.1l167.92-96.05a16,16,0,0,0,.05-27.89ZM56,224a.56.56,0,0,0,0-.12L85.74,136H144a8,8,0,0,0,0-16H85.74L56.06,32.16A.46.46,0,0,0,56,32l168,95.83Z","person":"M230.93,220a8,8,0,0,1-6.93,4H32a8,8,0,0,1-6.92-12c15.23-26.33,38.7-45.21,66.09-54.16a72,72,0,1,1,73.66,0c27.39,8.95,50.86,27.83,66.09,54.16A8,8,0,0,1,230.93,220Z","gearSix":"M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A112.1,112.1,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.62a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.08,8.08,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8.08,8.08,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z","copy":"M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z","broadcast":"M128,88a40,40,0,1,0,40,40A40,40,0,0,0,128,88Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,128,152Zm73.71,7.14a80,80,0,0,1-14.08,22.2,8,8,0,0,1-11.92-10.67,63.95,63.95,0,0,0,0-85.33,8,8,0,1,1,11.92-10.67,80.08,80.08,0,0,1,14.08,84.47ZM69,103.09a64,64,0,0,0,11.26,67.58,8,8,0,0,1-11.92,10.67,79.93,79.93,0,0,1,0-106.67A8,8,0,1,1,80.29,85.34,63.77,63.77,0,0,0,69,103.09ZM248,128a119.58,119.58,0,0,1-34.29,84,8,8,0,1,1-11.42-11.2,103.9,103.9,0,0,0,0-145.56A8,8,0,1,1,213.71,44,119.58,119.58,0,0,1,248,128ZM53.71,200.78A8,8,0,1,1,42.29,212a119.87,119.87,0,0,1,0-168,8,8,0,1,1,11.42,11.2,103.9,103.9,0,0,0,0,145.56Z","key":"M216.57,39.43A80,80,0,0,0,83.91,120.78L28.69,176A15.86,15.86,0,0,0,24,187.31V216a16,16,0,0,0,16,16H72a8,8,0,0,0,8-8V208H96a8,8,0,0,0,8-8V184h16a8,8,0,0,0,5.66-2.34l9.56-9.57A79.73,79.73,0,0,0,160,176h.1A80,80,0,0,0,216.57,39.43ZM224,98.1c-1.09,34.09-29.75,61.86-63.89,61.9H160a63.7,63.7,0,0,1-23.65-4.51,8,8,0,0,0-8.84,1.68L116.69,168H96a8,8,0,0,0-8,8v16H72a8,8,0,0,0-8,8v16H40V187.31l58.83-58.82a8,8,0,0,0,1.68-8.84A63.72,63.72,0,0,1,96,95.92c0-34.14,27.81-62.8,61.9-63.89A64,64,0,0,1,224,98.1ZM192,76a12,12,0,1,1-12-12A12,12,0,0,1,192,76Z","arrowClockwise":"M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z","arrowLeft":"M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z","at":"M128,24a104,104,0,0,0,0,208c21.51,0,44.1-6.48,60.43-17.33a8,8,0,0,0-8.86-13.33C166,210.38,146.21,216,128,216a88,88,0,1,1,88-88c0,26.45-10.88,32-20,32s-20-5.55-20-32V88a8,8,0,0,0-16,0v4.26a48,48,0,1,0,5.93,65.1c6,12,16.35,18.64,30.07,18.64,22.54,0,36-17.94,36-48A104.11,104.11,0,0,0,128,24Zm0,136a32,32,0,1,1,32-32A32,32,0,0,1,128,160Z","check":"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"};
 
   /* Vendor marks from simple-icons (CC0), on a 0 0 24 24 grid, plus the
      signature colour each mark and agent name renders in. */
@@ -123,6 +127,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     firstSeen: {},            /* "room#seq" -> ms, for the expects timer */
     copied: {},               /* transient "copied!" flags */
     confirmKill: {},
+    confirmClose: {},         /* room -> the Close button is armed and waiting for a second click */
     mint: { result: null, error: null, pending: false },
     regen: { armed: false, result: null, error: null, pending: false }
   };
@@ -251,6 +256,7 @@ DASHBOARD_HTML = r"""<!doctype html>
         out.push({
           name: p.name, room: room, online: !!p.online, life: life, quiet: quiet,
           secondsSinceSeen: quiet ? 0 : seconds, hue: hueFor(p.name),
+          capabilities: p.capabilities || "",
           justJoined: !!p.online && !(was && was.online)
         });
       });
@@ -268,6 +274,7 @@ DASHBOARD_HTML = r"""<!doctype html>
         (rank[v.life] === rank[ex.life] && v.secondsSinceSeen < ex.secondsSinceSeen);
       by[v.name] = {
         name: ex.name, room: ex.room, hue: ex.hue,
+        capabilities: ex.capabilities || v.capabilities || "",
         online: ex.online || v.online,
         justJoined: ex.justJoined || v.justJoined,
         life: better ? v.life : ex.life,
@@ -288,6 +295,13 @@ DASHBOARD_HTML = r"""<!doctype html>
   function roomAge(summary) {
     return summary.seconds_since_last + Math.max(0, (S.now - S.fetchedAt) / 1000);
   }
+  /* room name -> {name, status, closed_at, closed_by}. Rooms with no record are open,
+     so an absent entry is not missing data, it is the default. */
+  function roomStatus(room) {
+    var by = (S.data && S.data.room_status) || {};
+    return by[room] || { name: room, status: "open", closed_at: null, closed_by: null };
+  }
+  function isClosed(room) { return roomStatus(room).status === "closed"; }
   /* Every room that has messages, plus rooms that only have peers or keys so far.
      Most recently active first; rooms with no traffic yet trail alphabetically. */
   function roomList() {
@@ -296,6 +310,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     var set = {};
     Object.keys(sum).forEach(function (r) { set[r] = 1; });
     Object.keys(S.data.peers || {}).forEach(function (r) { set[r] = 1; });
+    Object.keys(S.data.room_status || {}).forEach(function (r) { set[r] = 1; });
     (S.data.codes || []).forEach(function (c) { set[c.room] = 1; });
     return Object.keys(set).sort(function (a, b) {
       var sa = sum[a], sb = sum[b];
@@ -400,7 +415,10 @@ DASHBOARD_HTML = r"""<!doctype html>
       icon("check", 10, "ph"), " claimed · " + by);
   }
   function expectsBadge(m) {
-    var label = m.expects_reply;
+    /* The relay narrows "anyone" to a name when there is only one other agent who
+       could answer. Show the narrowed value: "expects · anyone" makes an operator
+       scan the room to work out who owes a reply. */
+    var label = m.expects_reply_resolved || m.expects_reply;
     return E("span", "badge-pill badge-pill--expects",
       { "data-badge": "expects", title: 'expects_reply: "' + label + '" · unclaimed' },
       "expects · " + label,
@@ -455,17 +473,24 @@ DASHBOARD_HTML = r"""<!doctype html>
       var s = sums[r];
       /* A direct view is still a filter over that room, so it counts as watching it. */
       var unread = !!s && S.view.room !== r && s.last_seq > (S.seen[r] || 0);
-      var cls = "sb-room" + (active ? " active" : "") + (unread ? " unread" : "");
+      /* Closed reads as closed on the row itself: a padlock instead of the hash, the
+         word in the meta slot, and the whole row dimmed and struck. Not a tooltip. */
+      var shut = isClosed(r);
+      var cls = "sb-room" + (active ? " active" : "") + (unread ? " unread" : "") + (shut ? " closed" : "");
       var count = s ? s.messages : 0;
       var age = s ? lastSeen(roomAge(s)) : "quiet";
+      var life = s ? count + " message" + (count === 1 ? "" : "s") + " · last " + age + " ago" : "no messages yet";
+      var st = roomStatus(r);
       rl.appendChild(E("button", cls, {
         type: "button", "data-room": r, "aria-current": active ? "true" : null,
-        title: s ? count + " message" + (count === 1 ? "" : "s") + " · last " + age + " ago" : "no messages yet",
-        "aria-label": "Room " + r + ", " + (s ? count + " messages, last " + age + " ago" : "no messages yet")
+        "data-status": st.status,
+        title: (shut ? "Closed by " + (st.closed_by || "operator") + ", agents dismissed. " : "") + life,
+        "aria-label": "Room " + r + ", " + (shut ? "closed, " : "open, ") + life
       },
-        icon("hash", 14, "sb-ph"),
+        icon(shut ? "lockSimple" : "hash", 14, "sb-ph"),
         E("span", "sb-room__name", { text: r }),
-        E("span", "sb-room__meta", { "data-testid": "room-meta", text: s ? count + " · " + age : "quiet" }),
+        E("span", "sb-room__meta", { "data-testid": "room-meta",
+          text: shut ? "closed" : (s ? count + " · " + age : "quiet") }),
         unread ? E("span", "sb-udot", { "data-testid": "room-unread" }) : null));
     });
     if (S.authError) {
@@ -531,7 +556,15 @@ DASHBOARD_HTML = r"""<!doctype html>
     var brand = brandAccent(a.name);
     var nm = E("span", brand ? "sb-aname is-brand sb-aname--brand" : "sb-aname", { text: a.name });
     if (brand) { nm.style.setProperty("--agent", brand); }
-    b.appendChild(nm);
+    /* Capabilities were only ever visible in the admin drawer's key list, which is
+       not where you look to answer "what model is that". It goes under the name,
+       one line, ellipsised, so a long string cannot stretch the row. Shown verbatim:
+       the convention is model-first, but nothing here parses or assumes that. */
+    var caps = (a.capabilities || "").trim();
+    if (caps) { b.className = b.className + " has-caps"; }
+    var stack = E("div", "sb-astack", null, nm,
+      caps ? E("span", "sb-acaps", { "data-testid": "agent-caps", title: caps, text: caps }) : null);
+    b.appendChild(stack);
     b.appendChild(E("span", "sb-alast mono",
       { "data-testid": "last-seen", text: agentStamp(a, seconds) }));
     return b;
@@ -571,8 +604,16 @@ DASHBOARD_HTML = r"""<!doctype html>
       return;
     }
     var present = S.agents.filter(function (a) { return a.online && a.room === S.view.room; }).length;
-    h.appendChild(icon("hash", 16, "ph conv-header__hash"));
+    var st = roomStatus(S.view.room);
+    var shut = st.status === "closed";
+    h.appendChild(icon(shut ? "lockSimple" : "hash", 16, "ph conv-header__hash"));
     h.appendChild(E("span", "conv-header__name", { "data-testid": "channel-title", text: S.view.room }));
+    h.appendChild(E("span", shut ? "conv-header__status is-closed" : "conv-header__status", {
+      "data-testid": "room-status", "data-status": st.status,
+      title: shut ? "Closed by " + (st.closed_by || "operator") +
+                    (st.closed_at ? " at " + st.closed_at : "") + ", agents told to leave"
+                  : "Open, agents keep polling until you close it"
+    }, shut ? "closed" : "open"));
     h.appendChild(E("span", "conv-header__sep"));
     h.appendChild(E("span", "conv-header__meta", null,
       icon("usersThree", 13, "ph"), E("span", null, { text: String(present) }),
@@ -588,6 +629,18 @@ DASHBOARD_HTML = r"""<!doctype html>
     }
     var chip = turnChip(latestTurn());
     if (chip) { h.appendChild(chip); }
+    /* The operator's switch. Closing is what dismisses the agents, so it lives in the
+       header next to the room name, not buried in the admin drawer. Close asks twice,
+       because it ends everyone's session; reopen is harmless and goes straight through. */
+    if (!S.view.room) { return; }
+    var armed = !!S.confirmClose[S.view.room];
+    h.appendChild(E("button", "conv-header__lifebtn" + (shut ? " reopen" : (armed ? " confirm" : "")), {
+      type: "button", id: "roomLifeBtn", "data-testid": "room-close-btn",
+      "data-action": shut ? "reopen" : "close",
+      title: shut ? "Reopen #" + S.view.room + " so agents can join and post again"
+                  : "Close #" + S.view.room + ", every agent polling it is told to leave"
+    }, icon(shut ? "lockOpen" : "lockSimple", 12, "ph"),
+      shut ? " Reopen room" : (armed ? " Confirm close" : " Close room")));
   }
 
   /* -------------------------------------------------------------- timeline */
@@ -1072,6 +1125,20 @@ DASHBOARD_HTML = r"""<!doctype html>
       renderComposer();
     });
   }
+  /* Close/reopen the room in view. Same api() helper and the same admin token as
+     every other operator action, so nothing new is trusted here. */
+  function doRoomLife(action) {
+    var room = S.view.room;
+    if (!room) { return; }
+    if (action === "close" && !S.confirmClose[room]) {
+      S.confirmClose[room] = true; renderHeader();
+      setTimeout(function () { delete S.confirmClose[room]; renderHeader(); }, 3000);
+      return;
+    }
+    delete S.confirmClose[room];
+    api("/admin/rooms/" + encodeURIComponent(room) + "/" + (action === "reopen" ? "reopen" : "close"),
+      { by: (S.sendAs || "operator").trim() || "operator" }).then(poll).catch(function () {});
+  }
   function wire() {
     document.addEventListener("click", function (ev) {
       var t = ev.target.closest ? ev.target.closest("button,[data-room],[data-agent]") : null;
@@ -1110,6 +1177,7 @@ DASHBOARD_HTML = r"""<!doctype html>
       }
 
       switch (id) {
+        case "roomLifeBtn": doRoomLife(t.getAttribute("data-action")); break;
         case "navOpen": S.navOpen = true; renderAll(); break;
         case "navScrim": S.navOpen = false; renderAll(); break;
         case "openDrawer": S.drawerOpen = true; renderDrawer(); break;
@@ -1280,7 +1348,8 @@ DASHBOARD_HTML = r"""<!doctype html>
      Read-only maths on strings/numbers: no state, no network, no DOM writes. */
   window.__argy = {
     hueFor: hueFor, glyphFor: glyphFor, brandAccent: brandAccent,
-    lastSeen: lastSeen, elapsedSince: elapsedSince, dedupe: dedupe
+    lastSeen: lastSeen, elapsedSince: elapsedSince, dedupe: dedupe,
+    roomStatus: roomStatus, isClosed: isClosed
   };
 
   /* ------------------------------------------------------------------ boot */

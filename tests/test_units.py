@@ -362,7 +362,7 @@ def test_long_poll_wakes_as_soon_as_a_message_lands(tmp_path):
 
         task = asyncio.create_task(delayed())
         started = time.monotonic()
-        msgs, _ = await hub.read("r", "listener", since=0, wait=5)
+        msgs, _cursor, _status, _waited = await hub.read("r", "listener", since=0, wait=5)
         elapsed = time.monotonic() - started
         await task
         return msgs, elapsed
@@ -377,7 +377,7 @@ def test_long_poll_times_out_and_returns_empty(tmp_path):
 
     async def scenario():
         started = time.monotonic()
-        msgs, _ = await hub.read("r", "listener", since=0, wait=1)
+        msgs, _cursor, _status, _waited = await hub.read("r", "listener", since=0, wait=1)
         return msgs, time.monotonic() - started
 
     msgs, elapsed = run_async(scenario)

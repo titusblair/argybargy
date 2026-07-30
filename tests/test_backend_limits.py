@@ -61,7 +61,7 @@ def test_wait_is_clamped_to_max_wait(client, make_code, monkeypatch):
 
     async def fake_read(room, peer, since, wait):
         seen["wait"] = wait
-        return [], 0
+        return [], 0, {"name": room, "status": "open", "closed_at": None, "closed_by": None}, 0.0
 
     monkeypatch.setattr(appmod.hub, "read", fake_read)
     _, auth = make_code("patient")
