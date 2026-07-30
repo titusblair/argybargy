@@ -291,14 +291,23 @@ def dashboard() -> str:
 
 
 @app.get("/admin/state")
-async def admin_state(request: Request, _: None = Depends(require_admin)) -> dict:
+async def admin_state(
+    request: Request,
+    _: None = Depends(require_admin),
+    room: str | None = Query(default=None, description="Scope 'messages' to one room. Omitted = all rooms."),
+) -> dict:
+    """Dashboard snapshot. With ?room=<name>, 'messages' is that room's own tail
+    instead of the last 60 across every room, so a quiet room is not crowded out
+    by a busy one. 'rooms' always carries the per-room counts and staleness."""
     return {
         "version": VERSION,
         "public_url": _public_base(request),
         "hash_codes": settings.hash_codes,
         "peers": hub.all_peers(),
         "codes": code_store.list(),
-        "messages": message_store.recent(60),
+        "room": room,
+        "rooms": message_store.room_summaries(),
+        "messages": message_store.recent_in_room(room, 60) if room else message_store.recent(60),
     }
 
 
