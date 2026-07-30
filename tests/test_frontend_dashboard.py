@@ -293,6 +293,140 @@ def test_a_valid_token_clears_the_auth_notice(dash):
     assert dash.locator('[data-testid="sidebar-auth-note"]').count() == 0
 
 
+# ================================================== reaching the token field cold
+def test_cold_load_hides_the_token_field_behind_the_drawer(anon):
+    """The field does not exist until the drawer has been rendered once.
+
+    That is the trap: on a never-authenticated load there is nothing on screen to
+    type into, so the empty state has to both say where it is and get you there.
+    """
+    assert anon.evaluate("!!document.getElementById('adToken')") is False
+    assert anon.locator('[data-testid="auth-where"]').count() == 1
+    where = anon.locator('[data-testid="auth-where"]').inner_text()
+    assert "admin drawer" in where and "gear" in where
+
+
+def test_the_cold_cta_opens_the_drawer_and_selects_the_field(anon):
+    """Focus alone is not enough: a wrong token in the box must be replaced."""
+    anon.click("#authOpenDrawer")
+    anon.wait_for_selector("#adToken", timeout=15000)
+    anon.fill("#adToken", "a-stale-value")
+    anon.click("#adClose")
+    anon.click("#authOpenDrawer")
+    assert anon.evaluate("document.activeElement.id") == "adToken"
+    selected = anon.evaluate(
+        "() => { var f = document.getElementById('adToken');"
+        "return f.value.substring(f.selectionStart, f.selectionEnd); }"
+    )
+    assert selected == "a-stale-value", "a paste must overwrite, not append"
+
+
+def test_the_cold_path_works_on_a_phone_sized_viewport(page, live_server, seeded):
+    """The gear lives in an off-canvas sidebar on mobile, so the CTA is the only route."""
+    page.set_viewport_size({"width": 375, "height": 720})
+    page.add_init_script("localStorage.removeItem('cc_admin');")
+    page.goto(f"{live_server}/dashboard")
+    page.wait_for_selector('[data-testid="auth-required"]', timeout=15000)
+    assert page.locator("#authOpenDrawer").is_visible()
+    page.click("#authOpenDrawer")
+    page.wait_for_selector("#adToken", timeout=15000)
+    assert page.locator("#adToken").is_visible()
+
+
+def test_the_gear_says_a_token_is_needed_while_locked_out(anon):
+    gear = anon.locator("#openDrawer")
+    assert "admin token" in (gear.get_attribute("aria-label") or "")
+    assert "token" in (gear.get_attribute("title") or "")
+
+
+def test_the_gear_label_goes_back_to_normal_once_signed_in(dash):
+    assert dash.locator("#openDrawer").get_attribute("aria-label") == "Open admin drawer"
+
+
+# ======================================================= saving a token reports back
+@pytest.fixture
+def anon_drawer(anon):
+    """Cold dashboard with the admin drawer open on the token field."""
+    anon.click("#authOpenDrawer")
+    anon.wait_for_selector("#adToken", timeout=15000)
+    return anon
+
+
+def test_saving_a_rejected_token_says_it_was_rejected(anon_drawer):
+    """Silence on a bad token is what made Save look like a dead button."""
+    anon_drawer.fill("#adToken", "not-the-admin-token")
+    anon_drawer.click("#adSaveToken")
+    anon_drawer.wait_for_selector('[data-testid="token-save-note"]', timeout=15000)
+    note = anon_drawer.locator('[data-testid="token-save-note"]')
+    anon_drawer.wait_for_function(
+        "() => { var n = document.querySelector('[data-testid=\"token-save-note\"]');"
+        "return n && n.innerText.indexOf('rejected') >= 0; }",
+        timeout=15000,
+    )
+    text = note.inner_text()
+    assert "rejected" in text
+    assert "401" in text
+    assert "argybargy token" in text, "must say how to find the real one"
+    assert "ad-errorbox" in (note.get_attribute("class") or "")
+
+
+def test_saving_an_empty_token_says_the_field_was_empty(anon_drawer):
+    anon_drawer.fill("#adToken", "   ")
+    anon_drawer.click("#adSaveToken")
+    anon_drawer.wait_for_function(
+        "() => { var n = document.querySelector('[data-testid=\"token-save-note\"]');"
+        "return n && n.innerText.indexOf('No token entered') >= 0; }",
+        timeout=15000,
+    )
+
+
+def test_saving_a_good_token_confirms_visibly(anon_drawer, admin_headers):
+    anon_drawer.fill("#adToken", admin_headers["X-Admin-Token"])
+    anon_drawer.click("#adSaveToken")
+    anon_drawer.wait_for_function(
+        "() => { var n = document.querySelector('[data-testid=\"token-save-note\"]');"
+        "return n && n.innerText.indexOf('accepted') >= 0; }",
+        timeout=15000,
+    )
+    note = anon_drawer.locator('[data-testid="token-save-note"]')
+    assert "ad-resultbox" in (note.get_attribute("class") or "")
+    assert anon_drawer.locator('[data-testid="auth-required"]').count() == 0
+
+
+def test_the_admin_token_is_never_written_outside_its_own_field(anon_drawer, admin_headers):
+    """The value belongs in the input the operator controls, and nowhere else."""
+    token = admin_headers["X-Admin-Token"]
+    anon_drawer.fill("#adToken", token)
+    anon_drawer.click("#adSaveToken")
+    anon_drawer.wait_for_function(
+        "() => { var n = document.querySelector('[data-testid=\"token-save-note\"]');"
+        "return n && n.innerText.indexOf('accepted') >= 0; }",
+        timeout=15000,
+    )
+    assert token not in anon_drawer.inner_text("body")
+    assert anon_drawer.evaluate("document.getElementById('adToken').value") == token
+
+
+# =============================================== regenerating while locked out
+def test_regenerate_while_locked_out_explains_the_chicken_and_egg(anon_drawer):
+    """Regenerating is itself an admin write, so a 401 here is permanent, not a glitch.
+
+    Only the failing path is exercised. A successful regenerate would rotate the
+    token out from under every other test in the session.
+    """
+    anon_drawer.fill("#adToken", "not-the-admin-token")
+    anon_drawer.click("#adSaveToken")
+    anon_drawer.click("#adRegen")          # arms the confirm
+    anon_drawer.click("#adRegen")          # fires it
+    anon_drawer.wait_for_selector('[data-testid="regen-locked-out"]', timeout=15000)
+    text = anon_drawer.locator('[data-testid="regen-locked-out"]').inner_text()
+    assert "currently valid admin token" in text
+    assert "401" in text
+    assert "cannot get you back in" in text
+    assert "argybargy token" in text or "admin.token" in text
+    assert text.strip() != "Regenerate failed."
+
+
 # ============================================================== interaction
 def test_clicking_an_agent_opens_a_filtered_direct_view(dash):
     dash.click('[data-agent="codex-ui"]')
